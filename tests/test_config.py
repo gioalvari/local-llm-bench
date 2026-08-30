@@ -1,0 +1,56 @@
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from localllm_bench.config import (
+    BenchmarkMatrix,
+    ExperimentSpec,
+    ModelSpec,
+    WorkloadSpec,
+    load_experiment,
+)
+
+
+def test_model_requires_exactly_one_source() -> None:
+    with pytest.raises(ValidationError, match="exactly one"):
+        ModelSpec(name="test", quantization="Q4")
+    with pytest.raises(ValidationError, match="exactly one"):
+        ModelSpec(
+            name="test",
+            path=Path("model.gguf"),
+            hf_repo="owner/model",
+            quantization="Q4",
+        )
+
+
+def test_hf_file_requires_repository() -> None:
+    with pytest.raises(ValidationError, match="hf_file requires"):
+        ModelSpec(
+            name="test",
+            path=Path("model.gguf"),
+            hf_file="model.gguf",
+            quantization="Q4",
+        )
+
+
+def test_load_example() -> None:
+    spec = load_experiment(Path("configs/experiments/qwen-0.5b-smoke.yaml"))
+    assert isinstance(spec, ExperimentSpec)
+    assert spec.model.quantization == "Q4_K_M"
+    assert len(spec.matrix.workloads) == 2
+
+
+def test_workload_rejects_no_work() -> None:
+    with pytest.raises(ValidationError, match="at least one token"):
+        WorkloadSpec(name="empty", prompt_tokens=0, generation_tokens=0)
+
+
+def test_matrix_rejects_invalid_gpu_layer_count() -> None:
+    with pytest.raises(ValidationError, match="must be -1 or non-negative"):
+        BenchmarkMatrix(
+            workloads=[
+                WorkloadSpec(name="short", prompt_tokens=8, generation_tokens=4)
+            ],
+            gpu_layers=[-2],
+        )

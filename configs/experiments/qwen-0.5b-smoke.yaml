@@ -1,0 +1,23 @@
+schema_version: "1"
+experiment_id: qwen-0-5b-smoke
+output_dir: runs
+llama_bench_binary: llama-bench
+sample_interval_ms: 100
+model:
+  name: Qwen2.5-0.5B-Instruct-Q4_K_M
+  hf_repo: bartowski/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M
+  quantization: Q4_K_M
+matrix:
+  repetitions: 3
+  workloads:
+    - name: short
+      prompt_tokens: 128
+      generation_tokens: 64
+    - name: standard
+      prompt_tokens: 512
+      generation_tokens: 128
+  batch_sizes: [128, 512]
+  ubatch_sizes: [128]
+  threads: [10]
+  gpu_layers: [0, -1]
+  flash_attention: ["off", "on"]
