@@ -2,6 +2,7 @@
 
 import html
 import json
+import statistics
 from pathlib import Path
 from typing import Any
 
@@ -24,25 +25,79 @@ def _format_gib(value: object) -> str:
     return f"{int(value) / (1024**3):.3f}" if isinstance(value, int | float) else "n/a"
 
 
-def generate_report(run_dir: Path) -> Path:
-    """Generate a self-contained HTML summary from raw run artifacts.
+def _metric_card(label: str, value: str) -> str:
+    return (
+        '<div class="metric"><span class="metric-value">'
+        f"{html.escape(value)}</span><span>{html.escape(label)}</span></div>"
+    )
 
-    Parameters
-    ----------
-    run_dir
-        Directory containing a run manifest and measurements.
 
-    Returns
-    -------
-    Path
-        Generated report path.
-    """
-    manifest_path = run_dir / "manifest.json"
-    if not manifest_path.is_file():
-        raise FileNotFoundError(f"missing run manifest: {manifest_path}")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+def _generate_server_report(
+    run_dir: Path,
+    manifest: dict[str, Any],
+    failures: list[dict[str, Any]],
+) -> str:
+    requests = _read_jsonl(run_dir / "requests.jsonl")
+    ttft_ms = [float(item["ttft_ns"]) / 1_000_000 for item in requests]
+    e2e_ms = [float(item["e2e_latency_ns"]) / 1_000_000 for item in requests]
+    decode_rates = [
+        float(item["client_decode_tokens_per_second"])
+        for item in requests
+        if isinstance(item.get("client_decode_tokens_per_second"), int | float)
+    ]
+    cards = [
+        _metric_card(
+            "Model load",
+            f"{float(manifest.get('model_load_time_ns', 0)) / 1_000_000:.2f} ms",
+        ),
+        _metric_card(
+            "Median TTFT",
+            f"{statistics.median(ttft_ms):.2f} ms" if ttft_ms else "n/a",
+        ),
+        _metric_card(
+            "Median end-to-end",
+            f"{statistics.median(e2e_ms):.2f} ms" if e2e_ms else "n/a",
+        ),
+        _metric_card(
+            "Median decode",
+            f"{statistics.median(decode_rates):.2f} token/s" if decode_rates else "n/a",
+        ),
+        _metric_card(
+            "Peak process RSS",
+            f"{_format_gib(manifest.get('peak_process_tree_rss_bytes'))} GiB",
+        ),
+    ]
+    rows: list[str] = []
+    for request in requests:
+        values = [
+            request.get("request_index"),
+            f"{float(request['ttft_ns']) / 1_000_000:.2f}",
+            f"{float(request['e2e_latency_ns']) / 1_000_000:.2f}",
+            request.get("output_tokens"),
+            _format_rate(request.get("client_decode_tokens_per_second")),
+            request.get("event_count"),
+        ]
+        rows.append(
+            "<tr>"
+            + "".join(f"<td>{html.escape(str(value))}</td>" for value in values)
+            + "</tr>"
+        )
+    return f"""
+  <p class="meta">Requests: {len(requests)} | failures: {len(failures)}</p>
+  <div class="metrics">{"".join(cards)}</div>
+  <p>Client timings use monotonic timestamps from streamed completion events.</p>
+  <div class="panel"><table>
+    <thead><tr><th>Request</th><th>TTFT ms</th><th>E2E ms</th>
+    <th>Output tokens</th><th>Client token/s</th><th>Events</th></tr></thead>
+    <tbody>{"".join(rows)}</tbody>
+  </table></div>"""
+
+
+def _generate_microbenchmark_report(
+    run_dir: Path,
+    failures: list[dict[str, Any]],
+) -> str:
     observations = _read_jsonl(run_dir / "measurements.jsonl")
-    failures = _read_jsonl(run_dir / "failures.jsonl")
     rows: list[str] = []
     for observation in observations:
         if observation.get("dry_run"):
@@ -78,6 +133,41 @@ def generate_report(run_dir: Path) -> Path:
             + "".join(f"<td>{html.escape(str(value))}</td>" for value in values)
             + "</tr>"
         )
+    return f"""
+  <p class="meta">Observations: {len(rows)} | failures: {len(failures)}</p>
+  <p>Rates are llama.cpp microbenchmarks and exclude tokenization and sampling.</p>
+  <div class="panel"><table>
+    <thead><tr><th>Cell</th><th>Workload</th><th>Prompt</th><th>Gen</th>
+    <th>Batch</th><th>Ubatch</th><th>Threads</th><th>GPU layers</th>
+    <th>FA</th><th>Backend</th><th>tokens/s</th><th>Peak GiB</th>
+    <th>tokens/s/GiB</th></tr></thead>
+    <tbody>{"".join(rows)}</tbody>
+  </table></div>"""
+
+
+def generate_report(run_dir: Path) -> Path:
+    """Generate a self-contained HTML summary from raw run artifacts.
+
+    Parameters
+    ----------
+    run_dir
+        Directory containing a run manifest and measurements.
+
+    Returns
+    -------
+    Path
+        Generated report path.
+    """
+    manifest_path = run_dir / "manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"missing run manifest: {manifest_path}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    failures = _read_jsonl(run_dir / "failures.jsonl")
+    content = (
+        _generate_server_report(run_dir, manifest, failures)
+        if manifest.get("run_type") == "llama-server"
+        else _generate_microbenchmark_report(run_dir, failures)
+    )
     run_id = html.escape(str(manifest.get("run_id", run_dir.name)))
     document = f"""<!doctype html>
 <html lang="en">
@@ -90,6 +180,12 @@ def generate_report(run_dir: Path) -> Path:
     body {{ margin: 0; padding: 2rem; background: #101417; color: #e8efe9; }}
     h1 {{ color: #9be15d; letter-spacing: -.04em; }}
     .meta {{ color: #9ea9a1; }}
+    .metrics {{ display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+      gap: .75rem; margin: 1.5rem 0; }}
+    .metric {{ display: flex; flex-direction: column; gap: .25rem; padding: 1rem;
+      border: 1px solid #344038; border-radius: 8px; background: #171d19; }}
+    .metric-value {{ color: #9be15d; font-size: 1.35rem; font-weight: 700; }}
     .panel {{ overflow-x: auto; border: 1px solid #344038; border-radius: 8px; }}
     table {{ width: 100%; border-collapse: collapse; font-size: .82rem; }}
     th, td {{ padding: .65rem; border-bottom: 1px solid #2a332d; text-align: right; }}
@@ -100,16 +196,8 @@ def generate_report(run_dir: Path) -> Path:
 </head>
 <body>
   <h1>LocalLLM Bench</h1>
-  <p class="meta">Run {run_id} |
-    observations: {len(rows)} | failures: {len(failures)}</p>
-  <p>Rates are llama.cpp microbenchmarks and exclude tokenization and sampling.</p>
-  <div class="panel"><table>
-    <thead><tr><th>Cell</th><th>Workload</th><th>Prompt</th><th>Gen</th>
-    <th>Batch</th><th>Ubatch</th><th>Threads</th><th>GPU layers</th>
-    <th>FA</th><th>Backend</th><th>tokens/s</th><th>Peak GiB</th>
-    <th>tokens/s/GiB</th></tr></thead>
-    <tbody>{"".join(rows)}</tbody>
-  </table></div>
+  <p class="meta">Run {run_id}</p>
+  {content}
 </body>
 </html>
 """

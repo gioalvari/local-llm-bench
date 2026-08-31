@@ -11,9 +11,11 @@ from typing import Any, TextIO
 import psutil
 from pydantic import BaseModel
 
-from localllm_bench.config import ExperimentSpec, ModelSpec
+from localllm_bench.config import ExperimentSpec
 from localllm_bench.doctor import inspect_capabilities
+from localllm_bench.model import model_args, validate_model
 from localllm_bench.planner import Plan, RunCell, expand_plan
+from localllm_bench.telemetry import resource_sample
 
 
 class RunResult(BaseModel):
@@ -25,23 +27,11 @@ class RunResult(BaseModel):
     failed_cells: int
 
 
-def _model_args(model: ModelSpec) -> list[str]:
-    if model.path is not None:
-        arguments = ["--model", str(model.path)]
-    else:
-        arguments = ["--hf-repo", str(model.hf_repo)]
-        if model.hf_file is not None:
-            arguments.extend(["--hf-file", model.hf_file])
-    if model.offline:
-        arguments.append("--offline")
-    return arguments
-
-
 def build_command(spec: ExperimentSpec, cell: RunCell) -> list[str]:
     """Build a shell-free `llama-bench` command for one cell."""
     return [
         spec.llama_bench_binary,
-        *_model_args(spec.model),
+        *model_args(spec.model),
         "--n-prompt",
         str(cell.prompt_tokens),
         "--n-gen",
@@ -84,35 +74,9 @@ def _write_jsonl(stream: TextIO, value: Any) -> None:
     stream.flush()
 
 
-def _resource_sample(process: psutil.Process, started_ns: int) -> dict[str, int]:
-    process_rss = 0
-    process_tree_rss = 0
-    try:
-        process_rss = process.memory_info().rss
-        process_tree_rss = process_rss + sum(
-            child.memory_info().rss for child in process.children(recursive=True)
-        )
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        pass
-    host = psutil.virtual_memory()
-    swap = psutil.swap_memory()
-    return {
-        "monotonic_offset_ns": time.monotonic_ns() - started_ns,
-        "process_rss_bytes": process_rss,
-        "process_tree_rss_bytes": process_tree_rss,
-        "host_available_bytes": host.available,
-        "swap_used_bytes": swap.used,
-    }
-
-
 def _new_run_id(experiment_id: str) -> str:
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return f"{experiment_id}-{timestamp}-{uuid.uuid4().hex[:8]}"
-
-
-def _validate_local_model(model: ModelSpec) -> None:
-    if model.path is not None and not model.path.is_file():
-        raise FileNotFoundError(f"model file does not exist: {model.path}")
 
 
 def _prepare_run(spec: ExperimentSpec, plan: Plan) -> tuple[str, Path]:
@@ -145,7 +109,7 @@ def run_experiment(spec: ExperimentSpec, *, dry_run: bool = False) -> RunResult:
     RunResult
         Run location and cell completion counts.
     """
-    _validate_local_model(spec.model)
+    validate_model(spec.model)
     plan = expand_plan(spec)
     run_id, run_dir = _prepare_run(spec, plan)
     completed = 0
@@ -181,7 +145,7 @@ def run_experiment(spec: ExperimentSpec, *, dry_run: bool = False) -> RunResult:
                 tracked = psutil.Process(process.pid)
                 samples: list[dict[str, int]] = []
                 while process.poll() is None:
-                    sample = _resource_sample(tracked, started_ns)
+                    sample = resource_sample(tracked, started_ns)
                     samples.append(sample)
                     _write_jsonl(resources, {"cell_id": cell.cell_id, **sample})
                     time.sleep(spec.sample_interval_ms / 1000)
@@ -201,6 +165,8 @@ def run_experiment(spec: ExperimentSpec, *, dry_run: bool = False) -> RunResult:
                         "stderr_path": str(stderr_path.relative_to(run_dir)),
                     },
                 )
+                if spec.fail_fast:
+                    break
                 continue
             try:
                 output = parse_llama_bench_output(
@@ -217,6 +183,8 @@ def run_experiment(spec: ExperimentSpec, *, dry_run: bool = False) -> RunResult:
                         "stdout_path": str(stdout_path.relative_to(run_dir)),
                     },
                 )
+                if spec.fail_fast:
+                    break
                 continue
             for observation in output:
                 _write_jsonl(

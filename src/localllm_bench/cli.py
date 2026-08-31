@@ -11,6 +11,7 @@ from localllm_bench.doctor import inspect_capabilities
 from localllm_bench.planner import expand_plan
 from localllm_bench.reporting import generate_report
 from localllm_bench.runner import run_experiment
+from localllm_bench.server import run_server_benchmark
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
 
@@ -51,3 +52,12 @@ def report(
 ) -> None:
     """Generate a static report for a completed run."""
     typer.echo(str(generate_report(run_dir)))
+
+
+@app.command()
+def serve(
+    config: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+) -> None:
+    """Measure streaming latency through a managed llama-server process."""
+    result = run_server_benchmark(load_experiment(config))
+    typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))

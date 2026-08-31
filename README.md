@@ -21,10 +21,11 @@ The MVP includes:
 - Process-tree RSS and host-memory sampling.
 - Immutable JSON/JSONL run artifacts and a self-contained HTML report.
 - Judge-independent exact-match, token-F1, and numeric-answer metrics.
+- Streaming load time, TTFT, end-to-end latency, and client decode rate.
 
-TTFT, request latency, concurrent serving, MLX training, and energy sampling are
-explicitly outside this first vertical slice. They require `llama-server` or an
-MLX training worker and must not be inferred from `llama-bench` timings.
+Concurrent serving, MLX training, and energy sampling remain outside this first
+vertical slice. Serving latency comes from `llama-server` streaming events and
+is never inferred from `llama-bench` timings.
 
 ## Why a tiny-model MVP
 
@@ -32,6 +33,7 @@ Model artifacts are deliberately not committed. The example starts with
 Qwen2.5 0.5B Q4_K_M so that the benchmark engine can be validated with limited
 disk space. The main study should move to Qwen2.5 3B only after at least 25 GiB
 is available for source weights, quantized variants, adapters, and run output.
+The example manifest pins both the upstream revision and model SHA-256.
 
 ## Requirements
 
@@ -68,11 +70,27 @@ Validate and display the concrete benchmark matrix:
 uv run llmb plan configs/experiments/qwen-0.5b-smoke.yaml
 ```
 
-Run the experiment. The first invocation may download the model from Hugging
-Face through `llama.cpp`:
+Run the experiment after placing the pinned model in the local model directory:
 
 ```bash
+mkdir -p models
+curl --fail --location \
+  --output models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf \
+  https://huggingface.co/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/41ba88dbac95fed2528c92514c131d73eb5a174b/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
 uv run llmb run configs/experiments/qwen-0.5b-smoke.yaml
+```
+
+For the pinned smoke configuration, place the model at
+`models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf`. The runner verifies its SHA-256
+before loading it.
+
+The first measured Apple M4 Pro smoke run is summarized in
+[`results/qwen-0.5b-m4-pro-smoke.md`](results/qwen-0.5b-m4-pro-smoke.md).
+
+Measure end-to-end streaming latency with a fresh local server:
+
+```bash
+uv run llmb serve configs/experiments/qwen-0.5b-smoke.yaml
 ```
 
 Generate a report from the run directory printed by the command:
@@ -114,13 +132,13 @@ KV-cache types, and effective runtime settings.
 
 The `llama-bench` executable has no version flag. Its SHA-256 is captured by
 `doctor`, while its build number and commit are retained from every result row.
+Remote model configurations pin the exact GGUF filename instead of relying on
+the backend's quantization-name discovery.
 
 The planned serving phase will add:
 
-- Time to first token and inter-token latency from streaming event timestamps.
-- End-to-end latency and aggregate throughput.
 - Concurrent and open-loop request workloads.
-- Cold-load and first-request timing.
+- Aggregate throughput and goodput under load.
 - Quality-per-second and quality-per-gigabyte Pareto analysis.
 
 ## Fine-tuning track

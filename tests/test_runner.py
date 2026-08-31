@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -126,3 +127,38 @@ def test_run_experiment_rejects_missing_local_model(tmp_path: Path) -> None:
     )
     with pytest.raises(FileNotFoundError, match="model file"):
         run_experiment(spec, dry_run=True)
+
+
+def test_run_experiment_rejects_model_hash_mismatch(tmp_path: Path) -> None:
+    model_path = tmp_path / "model.gguf"
+    model_path.write_bytes(b"model")
+    spec = _spec().model_copy(
+        update={
+            "output_dir": tmp_path,
+            "model": _spec().model.model_copy(
+                update={
+                    "path": model_path,
+                    "hf_repo": None,
+                    "sha256": "0" * 64,
+                }
+            ),
+        }
+    )
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        run_experiment(spec, dry_run=True)
+
+
+def test_run_experiment_accepts_matching_model_hash(tmp_path: Path) -> None:
+    model_path = tmp_path / "model.gguf"
+    model_path.write_bytes(b"model")
+    digest = hashlib.sha256(b"model").hexdigest()
+    spec = _spec().model_copy(
+        update={
+            "output_dir": tmp_path,
+            "model": _spec().model.model_copy(
+                update={"path": model_path, "hf_repo": None, "sha256": digest}
+            ),
+        }
+    )
+    result = run_experiment(spec, dry_run=True)
+    assert result.completed_cells == 1

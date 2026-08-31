@@ -25,6 +25,9 @@ class ModelSpec(BaseModel):
     path: Path | None = None
     hf_repo: str | None = None
     hf_file: str | None = None
+    source_repo: str | None = None
+    source_revision: str | None = None
+    sha256: str | None = Field(default=None, pattern=r"^[a-fA-F0-9]{64}$")
     quantization: str = Field(min_length=1)
     offline: bool = False
 
@@ -74,6 +77,33 @@ class BenchmarkMatrix(BaseModel):
         return self
 
 
+class ServerSpec(BaseModel):
+    """Configuration for an end-to-end llama.cpp serving benchmark."""
+
+    prompt: str = Field(min_length=1)
+    repetitions: PositiveInt = 5
+    output_tokens: PositiveInt = 64
+    context_size: PositiveInt = 2048
+    batch_size: PositiveInt = 512
+    ubatch_size: PositiveInt = 128
+    threads: PositiveInt = 1
+    gpu_layers: int = -1
+    flash_attention: FlashAttention = FlashAttention.AUTO
+    parallel: PositiveInt = 1
+    port: int | None = Field(default=None, ge=1024, le=65535)
+    startup_timeout_seconds: PositiveInt = 120
+    request_timeout_seconds: PositiveInt = 120
+
+    @model_validator(mode="after")
+    def validate_runtime(self) -> "ServerSpec":
+        """Reject serving settings that llama.cpp cannot execute safely."""
+        if self.ubatch_size > self.batch_size:
+            raise ValueError("server ubatch_size must not exceed batch_size")
+        if self.gpu_layers < -1:
+            raise ValueError("server gpu_layers must be -1 or non-negative")
+        return self
+
+
 class ExperimentSpec(BaseModel):
     """Top-level benchmark experiment specification."""
 
@@ -81,9 +111,12 @@ class ExperimentSpec(BaseModel):
     experiment_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
     output_dir: Path = Path("runs")
     llama_bench_binary: str = "llama-bench"
+    llama_server_binary: str = "llama-server"
     sample_interval_ms: int = Field(default=100, ge=20, le=10_000)
+    fail_fast: bool = True
     model: ModelSpec
     matrix: BenchmarkMatrix
+    server: ServerSpec | None = None
 
 
 def load_experiment(path: Path) -> ExperimentSpec:
