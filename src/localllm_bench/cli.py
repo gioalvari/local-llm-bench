@@ -13,12 +13,16 @@ from localllm_bench.doctor import inspect_capabilities
 from localllm_bench.evaluation import run_evaluation
 from localllm_bench.factor_analysis import analyze_factor_run
 from localllm_bench.load import run_load_benchmark
+from localllm_bench.mlx_comparison import compare_mlx_evaluations
+from localllm_bench.mlx_evaluation import evaluate_mlx_model
 from localllm_bench.open_loop import run_open_loop_benchmark
 from localllm_bench.planner import expand_plan
 from localllm_bench.reporting import generate_report
 from localllm_bench.rescore import rescore_run
 from localllm_bench.runner import run_experiment
 from localllm_bench.server import run_server_benchmark
+from localllm_bench.training import run_training
+from localllm_bench.training_data import prepare_training_dataset
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
 
@@ -151,4 +155,56 @@ def analyze_factors(
 ) -> None:
     """Analyze paired offload, Flash Attention, and batch effects."""
     result = analyze_factor_run(run_dir, output_dir)
+    typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
+
+
+@app.command("prepare-training-data")
+def prepare_training_data(
+    source: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    output_dir: Annotated[Path, typer.Option("--output-dir")],
+) -> None:
+    """Validate and export document-disjoint MLX chat splits."""
+    result = prepare_training_dataset(source, output_dir)
+    typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
+
+
+@app.command("train")
+def train(
+    config: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    model_path: Annotated[Path, typer.Option("--model-path")],
+) -> None:
+    """Run a managed local MLX QLoRA experiment."""
+    result = run_training(load_experiment(config), model_path)
+    typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
+
+
+@app.command("evaluate-mlx")
+def evaluate_mlx(
+    config: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    model_path: Annotated[Path, typer.Option("--model-path")],
+    output_dir: Annotated[Path, typer.Option("--output-dir")],
+    adapter_path: Annotated[Path | None, typer.Option("--adapter-path")] = None,
+) -> None:
+    """Evaluate a base or adapted MLX model on the held-out split."""
+    experiment = load_experiment(config)
+    if experiment.training is None:
+        raise typer.BadParameter("experiment does not define a training section")
+    result = evaluate_mlx_model(
+        model_path,
+        experiment.training.source_dataset,
+        output_dir,
+        adapter_path=adapter_path,
+        expected_model_sha256=experiment.training.model_sha256,
+    )
+    typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
+
+
+@app.command("compare-mlx")
+def compare_mlx(
+    base_dir: Annotated[Path, typer.Option("--base-dir")],
+    adapted_dir: Annotated[Path, typer.Option("--adapted-dir")],
+    output_dir: Annotated[Path, typer.Option("--output-dir")],
+) -> None:
+    """Compare frozen base and adapted MLX evaluation artifacts."""
+    result = compare_mlx_evaluations(base_dir, adapted_dir, output_dir)
     typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))

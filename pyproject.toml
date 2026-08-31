@@ -26,7 +26,7 @@ dev = [
   "types-psutil>=6.1,<8",
   "types-pyyaml>=6.0,<7",
 ]
-mlx = ["mlx-lm>=0.22,<1"]
+mlx = ["mlx-lm[train]>=0.22,<1"]
 
 [project.scripts]
 llmb = "localllm_bench.cli:app"

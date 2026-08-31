@@ -87,3 +87,16 @@ context_sweep:
       series: [prompt-length]
       context_size: 4096
       prompt_tokens: 2048
+training:
+  source_dataset: datasets/training/energy-market-qa.jsonl
+  model: mlx-community/Qwen2.5-0.5B-Instruct-4bit
+  model_revision: a5339a4131f135d0fdc6a5c8b5bbed2753bbe0f3
+  model_sha256: 8eb92e234f43ed1826f02aafd04c1bd210fe7bb028fc1341935b633bad2b0cd3
+  iterations: 30
+  batch_size: 1
+  gradient_accumulation_steps: 1
+  num_layers: 4
+  learning_rate: 0.00001
+  max_seq_length: 512
+  mask_prompt: true
+  seed: 42

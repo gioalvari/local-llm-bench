@@ -199,6 +199,23 @@ class ContextSweepSpec(BaseModel):
         return self
 
 
+class TrainingSpec(BaseModel):
+    """Apple-native MLX QLoRA smoke-training configuration."""
+
+    source_dataset: Path
+    model: str = Field(min_length=1)
+    model_revision: str = Field(min_length=1)
+    model_sha256: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
+    iterations: PositiveInt = 30
+    batch_size: PositiveInt = 1
+    gradient_accumulation_steps: PositiveInt = 1
+    num_layers: PositiveInt = 4
+    learning_rate: PositiveFloat = 1e-5
+    max_seq_length: PositiveInt = 512
+    mask_prompt: bool = True
+    seed: int = 42
+
+
 class ExperimentSpec(BaseModel):
     """Top-level benchmark experiment specification."""
 
@@ -216,6 +233,7 @@ class ExperimentSpec(BaseModel):
     load: LoadSpec | None = None
     open_loop: OpenLoopSpec | None = None
     context_sweep: ContextSweepSpec | None = None
+    training: TrainingSpec | None = None
 
 
 def load_experiment(path: Path) -> ExperimentSpec:

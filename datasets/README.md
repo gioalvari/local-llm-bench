@@ -52,3 +52,8 @@ generation. It contains no expected answers and is not part of quality scoring.
 `context/energy-market.txt` is a short public repository-owned text seed. The
 context runner tokenizes it with the loaded model and cycles the resulting token
 IDs to construct exact, reproducible prompt lengths.
+
+`training/energy-market-qa.jsonl` is a synthetic smoke-training corpus for
+pipeline validation. Splits are disjoint by `source_document_id`. It is too
+small for a general model-quality claim and does not reuse the EIA smoke-test
+questions.

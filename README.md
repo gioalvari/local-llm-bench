@@ -24,9 +24,10 @@ The MVP includes:
 - Streaming load time, TTFT, end-to-end latency, and client decode rate.
 - Frozen zero-shot and engineered prompt arms over source-grounded JSONL data.
 
-Open-loop serving, MLX training, and energy sampling remain outside this first
+Randomized-arrival serving and energy sampling remain outside this first
 vertical slice. Serving latency comes from `llama-server` streaming events and
-is never inferred from `llama-bench` timings.
+is never inferred from `llama-bench` timings. Apple-native MLX QLoRA is included
+as an optional training extra.
 
 ## Why a tiny-model MVP
 
@@ -112,6 +113,10 @@ The controlled context-window and prompt-length study is documented in
 
 The paired offload, Flash Attention, and batch-size analysis is documented in
 [`results/qwen-0.5b-factor-effects-m4-pro.md`](results/qwen-0.5b-factor-effects-m4-pro.md).
+
+The first Apple-native QLoRA smoke run, including its negative held-out result,
+is documented in
+[`results/qwen-0.5b-mlx-qlora-m4-pro.md`](results/qwen-0.5b-mlx-qlora-m4-pro.md).
 
 Measure end-to-end streaming latency with a fresh local server:
 
@@ -274,6 +279,46 @@ The held-out set must be split by source document or topic, not random rows.
 Acceptance uses exact match, token F1, numeric accuracy with units and fixed
 tolerances, abstention F1, and output-schema validity. An LLM judge is not an
 acceptance metric.
+
+Prepare the document-disjoint MLX chat splits and run the optional Apple-native
+4-bit QLoRA smoke experiment:
+
+```bash
+make install-mlx
+uv run hf download mlx-community/Qwen2.5-0.5B-Instruct-4bit \
+  --revision a5339a4131f135d0fdc6a5c8b5bbed2753bbe0f3 \
+  --local-dir models/mlx-qwen2.5-0.5b-instruct-4bit
+uv run llmb prepare-training-data \
+  datasets/training/energy-market-qa.jsonl \
+  --output-dir runs/prepared-training-data
+uv run llmb train configs/experiments/qwen-0.5b-smoke.yaml \
+  --model-path models/mlx-qwen2.5-0.5b-instruct-4bit
+uv run llmb evaluate-mlx configs/experiments/qwen-0.5b-smoke.yaml \
+  --model-path models/mlx-qwen2.5-0.5b-instruct-4bit \
+  --output-dir runs/mlx-base-evaluation
+uv run llmb evaluate-mlx configs/experiments/qwen-0.5b-smoke.yaml \
+  --model-path models/mlx-qwen2.5-0.5b-instruct-4bit \
+  --adapter-path runs/<training-run>/adapters \
+  --output-dir runs/mlx-adapted-evaluation
+```
+
+Training data preparation rejects duplicate questions, source documents shared
+between splits, and exact normalized answers shared between training and either
+evaluation split. Adapter weights and prepared data remain under ignored
+`runs/`.
+
+MLX evaluation uses the model's chat template, greedy decoding, and the untouched
+test split. It records normalized exact match, token F1, latency, model and
+adapter digests, and individual responses under ignored run directories.
+
+Compare the frozen evaluation artifacts:
+
+```bash
+uv run llmb compare-mlx \
+  --base-dir runs/<base-evaluation> \
+  --adapted-dir runs/<adapted-evaluation> \
+  --output-dir runs/<mlx-comparison>
+```
 
 ## Development
 
