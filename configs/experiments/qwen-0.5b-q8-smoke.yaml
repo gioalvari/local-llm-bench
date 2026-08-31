@@ -53,3 +53,37 @@ open_loop:
   max_client_workers: 32
   latency_slo_ms: 500
   cooldown_seconds: 0.5
+context_sweep:
+  corpus: datasets/context/energy-market.txt
+  repetitions: 3
+  warmup_requests: 1
+  output_tokens: 64
+  cases:
+    - name: window-256-prompt-128
+      series: [window-size]
+      context_size: 256
+      prompt_tokens: 128
+    - name: window-1024-prompt-128
+      series: [window-size]
+      context_size: 1024
+      prompt_tokens: 128
+    - name: window-2048-prompt-128
+      series: [window-size]
+      context_size: 2048
+      prompt_tokens: 128
+    - name: window-4096-prompt-128
+      series: [window-size, prompt-length]
+      context_size: 4096
+      prompt_tokens: 128
+    - name: window-4096-prompt-512
+      series: [prompt-length]
+      context_size: 4096
+      prompt_tokens: 512
+    - name: window-4096-prompt-1024
+      series: [prompt-length]
+      context_size: 4096
+      prompt_tokens: 1024
+    - name: window-4096-prompt-2048
+      series: [prompt-length]
+      context_size: 4096
+      prompt_tokens: 2048

@@ -107,6 +107,9 @@ The first controlled concurrency study is documented in
 The first fixed-rate saturation study is documented in
 [`results/qwen-0.5b-q4-open-loop-m4-pro.md`](results/qwen-0.5b-q4-open-loop-m4-pro.md).
 
+The controlled context-window and prompt-length study is documented in
+[`results/qwen-0.5b-q4-context-m4-pro.md`](results/qwen-0.5b-q4-context-m4-pro.md).
+
 Measure end-to-end streaming latency with a fresh local server:
 
 ```bash
@@ -136,6 +139,20 @@ throughput, latency-SLO goodput, median/P95 latency, scheduler delay, maximum
 client in-flight requests, errors, and memory. Requests are emitted at fixed
 intervals independently of previous completion, then fully drained before the
 next rate.
+
+Measure exact prompt lengths across context windows:
+
+```bash
+uv run llmb context configs/experiments/qwen-0.5b-smoke.yaml
+uv run llmb report runs/<context-run-id>
+```
+
+The context runner calibrates prompts through the model's `/tokenize` endpoint,
+sends exact token-ID arrays, validates backend prompt counts, and starts a fresh
+one-slot server for every case. It records load time, prompt evaluation,
+TTFT/end-to-end latency, decode rate, and memory. The configured sweep separates
+window-size effects at a fixed prompt length from prompt-length effects at a
+fixed context window.
 
 Run objective quality evaluation on the included EIA smoke benchmark:
 

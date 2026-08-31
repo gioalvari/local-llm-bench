@@ -172,3 +172,33 @@ def test_generate_open_loop_report(tmp_path: Path) -> None:
     assert "Offered req/s" in content
     assert "500.00 token/s" in content
     assert "95.0%" in content
+
+
+def test_generate_context_report(tmp_path: Path) -> None:
+    manifest = {
+        "run_id": "context-run",
+        "run_type": "context-sweep",
+        "summary": [
+            {
+                "case": "prompt-512",
+                "series": "prompt-length",
+                "context_size": 1024,
+                "prompt_tokens": 512,
+                "model_load_time_ms": 400.0,
+                "median_prompt_eval_ms": 100.0,
+                "median_prompt_tokens_per_second": 5120.0,
+                "median_ttft_ms": 110.0,
+                "p95_ttft_ms": 120.0,
+                "median_e2e_ms": 350.0,
+                "median_decode_tokens_per_second": 250.0,
+                "peak_process_tree_rss_bytes": 1024**3,
+                "error_rate": 0.0,
+            }
+        ],
+    }
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (tmp_path / "requests.jsonl").write_text("{}\n" * 3, encoding="utf-8")
+    content = generate_report(tmp_path).read_text(encoding="utf-8")
+    assert "Exact token-ID prompts" in content
+    assert "prompt-512" in content
+    assert "5120.00" in content

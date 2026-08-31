@@ -307,6 +307,54 @@ def _generate_open_loop_report(
   </table></div>"""
 
 
+def _generate_context_report(
+    run_dir: Path,
+    manifest: dict[str, Any],
+    _failures: list[dict[str, Any]],
+) -> str:
+    records = _read_jsonl(run_dir / "requests.jsonl")
+    failed_requests = sum("error" in record for record in records)
+    summary = manifest.get("summary", [])
+    rows: list[str] = []
+    for case in summary:
+        values = [
+            case.get("case"),
+            case.get("series"),
+            case.get("context_size"),
+            case.get("prompt_tokens"),
+            f"{float(case['model_load_time_ms']):.2f}",
+            f"{float(case['median_prompt_eval_ms']):.2f}",
+            f"{float(case['median_prompt_tokens_per_second']):.2f}",
+            f"{float(case['median_ttft_ms']):.2f}",
+            f"{float(case['p95_ttft_ms']):.2f}",
+            f"{float(case['median_e2e_ms']):.2f}",
+            f"{float(case['median_decode_tokens_per_second']):.2f}",
+            _format_gib(case.get("peak_process_tree_rss_bytes")),
+            f"{float(case['error_rate']):.1%}",
+        ]
+        rows.append(
+            "<tr>"
+            + "".join(f"<td>{html.escape(str(value))}</td>" for value in values)
+            + "</tr>"
+        )
+    cards = [
+        _metric_card("Measured requests", str(len(records))),
+        _metric_card("Context cases", str(len(summary))),
+        _metric_card("Failures", str(failed_requests)),
+    ]
+    return f"""
+  <p class="meta">Requests: {len(records)} | failures: {failed_requests}</p>
+  <div class="metrics">{"".join(cards)}</div>
+  <p>Exact token-ID prompts; each context case uses a fresh server.</p>
+  <div class="panel"><table>
+    <thead><tr><th>Case</th><th>Series</th><th>Context</th><th>Prompt tokens</th>
+    <th>Load ms</th><th>Prompt eval ms</th><th>Prompt token/s</th>
+    <th>Median TTFT ms</th><th>P95 TTFT ms</th><th>Median E2E ms</th>
+    <th>Decode token/s</th><th>Peak RSS GiB</th><th>Error rate</th></tr></thead>
+    <tbody>{"".join(rows)}</tbody>
+  </table></div>"""
+
+
 def generate_report(run_dir: Path) -> Path:
     """Generate a self-contained HTML summary from raw run artifacts.
 
@@ -334,6 +382,8 @@ def generate_report(run_dir: Path) -> Path:
         content = _generate_load_report(run_dir, manifest, failures)
     elif run_type == "open-loop-load":
         content = _generate_open_loop_report(run_dir, manifest, failures)
+    elif run_type == "context-sweep":
+        content = _generate_context_report(run_dir, manifest, failures)
     else:
         content = _generate_microbenchmark_report(run_dir, failures)
     run_id = html.escape(str(manifest.get("run_id", run_dir.name)))

@@ -8,6 +8,7 @@ import typer
 
 from localllm_bench.comparison import VariantRuns, compare_variants
 from localllm_bench.config import load_experiment
+from localllm_bench.context_sweep import run_context_sweep
 from localllm_bench.doctor import inspect_capabilities
 from localllm_bench.evaluation import run_evaluation
 from localllm_bench.load import run_load_benchmark
@@ -128,4 +129,13 @@ def open_loop(
 ) -> None:
     """Run deterministic fixed-rate open-loop request traffic."""
     result = run_open_loop_benchmark(load_experiment(config))
+    typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
+
+
+@app.command("context")
+def context_sweep(
+    config: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+) -> None:
+    """Measure exact prompt lengths across configured context windows."""
+    result = run_context_sweep(load_experiment(config))
     typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))

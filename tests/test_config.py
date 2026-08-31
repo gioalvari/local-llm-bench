@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from localllm_bench.config import (
     BenchmarkMatrix,
+    ContextSweepSpec,
     ExperimentSpec,
     LoadSpec,
     ModelSpec,
@@ -86,3 +87,117 @@ def test_open_loop_requires_unique_increasing_rates() -> None:
         OpenLoopSpec(prompt_dataset=Path("prompts.jsonl"), arrival_rates_rps=[2, 1])
     with pytest.raises(ValidationError, match="unique and increasing"):
         OpenLoopSpec(prompt_dataset=Path("prompts.jsonl"), arrival_rates_rps=[1, 1])
+
+
+def test_context_sweep_rejects_duplicates_and_undersized_windows() -> None:
+    with pytest.raises(ValidationError, match="case names must be unique"):
+        ContextSweepSpec.model_validate(
+            {
+                "corpus": "corpus.txt",
+                "output_tokens": 8,
+                "cases": [
+                    {
+                        "name": "same",
+                        "series": ["window-size"],
+                        "context_size": 32,
+                        "prompt_tokens": 16,
+                    },
+                    {
+                        "name": "same",
+                        "series": ["window-size"],
+                        "context_size": 64,
+                        "prompt_tokens": 16,
+                    },
+                ],
+            }
+        )
+    with pytest.raises(ValidationError, match="must fit"):
+        ContextSweepSpec.model_validate(
+            {
+                "corpus": "corpus.txt",
+                "output_tokens": 16,
+                "cases": [
+                    {
+                        "name": "too-small",
+                        "series": ["window-size"],
+                        "context_size": 32,
+                        "prompt_tokens": 24,
+                    }
+                ],
+            }
+        )
+
+
+def test_context_sweep_rejects_confounded_series() -> None:
+    with pytest.raises(ValidationError, match="keep prompt_tokens fixed"):
+        ContextSweepSpec.model_validate(
+            {
+                "corpus": "corpus.txt",
+                "output_tokens": 8,
+                "cases": [
+                    {
+                        "name": "one",
+                        "series": ["window-size"],
+                        "context_size": 64,
+                        "prompt_tokens": 16,
+                    },
+                    {
+                        "name": "two",
+                        "series": ["window-size"],
+                        "context_size": 128,
+                        "prompt_tokens": 32,
+                    },
+                ],
+            }
+        )
+
+
+def test_context_sweep_accepts_controlled_two_series() -> None:
+    sweep = ContextSweepSpec.model_validate(
+        {
+            "corpus": "corpus.txt",
+            "output_tokens": 8,
+            "cases": [
+                {
+                    "name": "small-window",
+                    "series": ["window-size"],
+                    "context_size": 64,
+                    "prompt_tokens": 16,
+                },
+                {
+                    "name": "shared-baseline",
+                    "series": ["window-size", "prompt-length"],
+                    "context_size": 128,
+                    "prompt_tokens": 16,
+                },
+                {
+                    "name": "long-prompt",
+                    "series": ["prompt-length"],
+                    "context_size": 128,
+                    "prompt_tokens": 32,
+                },
+            ],
+        }
+    )
+    assert len(sweep.cases) == 3
+    with pytest.raises(ValidationError, match="keep context_size fixed"):
+        ContextSweepSpec.model_validate(
+            {
+                "corpus": "corpus.txt",
+                "output_tokens": 8,
+                "cases": [
+                    {
+                        "name": "one",
+                        "series": ["prompt-length"],
+                        "context_size": 64,
+                        "prompt_tokens": 16,
+                    },
+                    {
+                        "name": "two",
+                        "series": ["prompt-length"],
+                        "context_size": 128,
+                        "prompt_tokens": 32,
+                    },
+                ],
+            }
+        )

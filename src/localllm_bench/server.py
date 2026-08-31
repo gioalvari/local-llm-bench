@@ -188,6 +188,58 @@ def complete_prompt(
     return {"request_index": request_index, **measurement}
 
 
+def tokenize(base_url: str, content: str, timeout_seconds: int) -> list[int]:
+    """Tokenize text with the exact tokenizer loaded by llama-server."""
+    request = Request(
+        f"{base_url}/tokenize",
+        data=json.dumps(
+            {"content": content, "add_special": False, "parse_special": True}
+        ).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urlopen(request, timeout=timeout_seconds) as response:
+        payload = json.load(response)
+    tokens = payload.get("tokens") if isinstance(payload, dict) else None
+    if (
+        not isinstance(tokens, list)
+        or not tokens
+        or not all(isinstance(token, int) for token in tokens)
+    ):
+        raise ValueError("tokenize endpoint returned no integer tokens")
+    return tokens
+
+
+def complete_token_prompt(
+    base_url: str,
+    server: ServerSpec,
+    prompt_tokens: list[int],
+    *,
+    request_index: int,
+    output_tokens: int,
+) -> dict[str, Any]:
+    """Complete an exact token-ID prompt without adding a BOS token."""
+    payload = {
+        "prompt": prompt_tokens,
+        "n_predict": output_tokens,
+        "temperature": 0.0,
+        "seed": 42,
+        "stream": True,
+        "cache_prompt": False,
+        "ignore_eos": True,
+    }
+    request = Request(
+        f"{base_url}/completion",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    started_ns = time.monotonic_ns()
+    with urlopen(request, timeout=server.request_timeout_seconds) as response:
+        measurement = _read_stream(response, started_ns)
+    return {"request_index": request_index, **measurement}
+
+
 def complete_chat_prompt(
     base_url: str,
     server: ServerSpec,

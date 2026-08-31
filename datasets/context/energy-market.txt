@@ -1,0 +1,10 @@
+Electricity systems continuously balance generation and demand. System operators
+schedule generators, monitor frequency, procure operating reserves, and use
+transmission networks to move power between regions. Variable renewable
+generation changes with weather, while storage can absorb surplus electricity
+and discharge it later. High-voltage transmission connects generation resources
+to distribution networks, and distribution systems deliver lower-voltage power
+to consumers. Market prices can signal scarcity, congestion, fuel costs, and the
+value of flexibility. Reliable operation requires enough capacity, energy,
+reserves, and network capability to respond to expected conditions and
+unexpected outages.

@@ -159,6 +159,46 @@ class OpenLoopSpec(BaseModel):
         return self
 
 
+class ContextCaseSpec(BaseModel):
+    """One configured context window and exact prompt length."""
+
+    name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    series: list[Literal["window-size", "prompt-length"]] = Field(min_length=1)
+    context_size: PositiveInt
+    prompt_tokens: PositiveInt
+
+
+class ContextSweepSpec(BaseModel):
+    """Exact-token context-length benchmark."""
+
+    corpus: Path
+    repetitions: PositiveInt = 3
+    warmup_requests: NonNegativeInt = 1
+    output_tokens: PositiveInt = 64
+    cases: list[ContextCaseSpec] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_cases(self) -> "ContextSweepSpec":
+        """Require unique cases with enough context for prompt and output."""
+        names = [case.name for case in self.cases]
+        if len(names) != len(set(names)):
+            raise ValueError("context sweep case names must be unique")
+        for case in self.cases:
+            if len(case.series) != len(set(case.series)):
+                raise ValueError("context sweep case series must be unique")
+            if case.context_size < case.prompt_tokens + self.output_tokens:
+                raise ValueError(
+                    "context_size must fit prompt_tokens and output_tokens"
+                )
+        window_cases = [case for case in self.cases if "window-size" in case.series]
+        prompt_cases = [case for case in self.cases if "prompt-length" in case.series]
+        if window_cases and len({case.prompt_tokens for case in window_cases}) != 1:
+            raise ValueError("window-size series must keep prompt_tokens fixed")
+        if prompt_cases and len({case.context_size for case in prompt_cases}) != 1:
+            raise ValueError("prompt-length series must keep context_size fixed")
+        return self
+
+
 class ExperimentSpec(BaseModel):
     """Top-level benchmark experiment specification."""
 
@@ -175,6 +215,7 @@ class ExperimentSpec(BaseModel):
     evaluation: EvaluationSpec | None = None
     load: LoadSpec | None = None
     open_loop: OpenLoopSpec | None = None
+    context_sweep: ContextSweepSpec | None = None
 
 
 def load_experiment(path: Path) -> ExperimentSpec:

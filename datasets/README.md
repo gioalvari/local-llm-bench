@@ -48,3 +48,7 @@ Sources:
 
 `load/energy-prompts.jsonl` is a deterministic rotating prompt corpus for load
 generation. It contains no expected answers and is not part of quality scoring.
+
+`context/energy-market.txt` is a short public repository-owned text seed. The
+context runner tokenizes it with the loaded model and cycles the resulting token
+IDs to construct exact, reproducible prompt lengths.
