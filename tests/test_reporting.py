@@ -80,3 +80,31 @@ def test_generate_server_report(tmp_path: Path) -> None:
     assert "Median TTFT" in content
     assert "10.00 ms" in content
     assert "160.00 token/s" in content
+
+
+def test_generate_quality_report(tmp_path: Path) -> None:
+    manifest = {
+        "run_id": "quality-run",
+        "run_type": "quality-evaluation",
+        "summary": {
+            "engineered": {
+                "items": 2,
+                "answer_accuracy": 0.5,
+                "exact_match": 0.5,
+                "token_f1": 0.75,
+                "scorable_response_rate": 1.0,
+                "schema_valid_rate": 1.0,
+                "numeric_accuracy": 0.5,
+                "unit_accuracy": 0.5,
+                "median_ttft_ms": 12.0,
+                "median_e2e_ms": 200.0,
+                "quality_adjusted_answers_per_second": 2.5,
+            }
+        },
+    }
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (tmp_path / "evaluations.jsonl").write_text("{}\n{}\n", encoding="utf-8")
+    content = generate_report(tmp_path).read_text(encoding="utf-8")
+    assert "engineered accuracy" in content
+    assert "50.0%" in content
+    assert "Correct/s" in content

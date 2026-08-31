@@ -36,3 +36,7 @@ server:
   gpu_layers: -1
   flash_attention: "on"
   parallel: 1
+evaluation:
+  dataset: datasets/energy/eia-electricity-smoke.jsonl
+  prompt_arms: [zero-shot, engineered]
+  output_tokens: 96

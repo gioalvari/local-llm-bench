@@ -63,6 +63,18 @@ def test_parse_sse_line() -> None:
         parse_sse_line(b"data: []\n")
 
 
+def test_stream_parser_reads_openai_chat_delta() -> None:
+    from localllm_bench.server import _read_stream
+
+    response = BytesIO(
+        b'data: {"choices":[{"delta":{"content":"{\\"answer\\""}}]}\n\n'
+        b'data: {"choices":[{"delta":{"content":":\\"x\\",\\"unit\\":null}"}}]}\n\n'
+        b"data: [DONE]\n\n"
+    )
+    result = _read_stream(response, 0)
+    assert result["response_text"] == '{"answer":"x","unit":null}'
+
+
 def test_run_server_benchmark_with_fake_server(tmp_path: Path) -> None:
     script = tmp_path / "fake_server.py"
     script.write_text(

@@ -29,7 +29,8 @@ class ServerRunResult(BaseModel):
     failed_requests: int
 
 
-def _available_port() -> int:
+def available_port() -> int:
+    """Reserve and return an ephemeral local TCP port."""
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         return int(listener.getsockname()[1])
@@ -79,9 +80,10 @@ def parse_sse_line(line: bytes) -> dict[str, Any] | None:
     return event
 
 
-def _wait_until_ready(
+def wait_until_ready(
     base_url: str, process: subprocess.Popen[str], timeout_seconds: int
 ) -> int:
+    """Wait for a managed llama-server health endpoint."""
     started_ns = time.monotonic_ns()
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
@@ -113,6 +115,13 @@ def _read_stream(response: BinaryIO, request_started_ns: int) -> dict[str, Any]:
         event_offsets_ns.append(observed_ns - request_started_ns)
         final_event = event
         content = event.get("content")
+        choices = event.get("choices")
+        if not isinstance(content, str) and isinstance(choices, list) and choices:
+            first_choice = choices[0]
+            if isinstance(first_choice, dict):
+                delta = first_choice.get("delta")
+                if isinstance(delta, dict):
+                    content = delta.get("content")
         if isinstance(content, str) and content:
             content_parts.append(content)
             first_content_ns = first_content_ns or observed_ns
@@ -148,18 +157,24 @@ def _read_stream(response: BinaryIO, request_started_ns: int) -> dict[str, Any]:
     }
 
 
-def stream_completion(
-    base_url: str, server: ServerSpec, *, request_index: int
+def complete_prompt(
+    base_url: str,
+    server: ServerSpec,
+    prompt: str,
+    *,
+    request_index: int,
+    output_tokens: int | None = None,
+    ignore_eos: bool = True,
 ) -> dict[str, Any]:
-    """Send one deterministic streaming request and measure client timings."""
+    """Send one deterministic streaming prompt and measure client timings."""
     payload = {
-        "prompt": server.prompt,
-        "n_predict": server.output_tokens,
+        "prompt": prompt,
+        "n_predict": output_tokens or server.output_tokens,
         "temperature": 0.0,
         "seed": 42,
         "stream": True,
         "cache_prompt": False,
-        "ignore_eos": True,
+        "ignore_eos": ignore_eos,
     }
     request = Request(
         f"{base_url}/completion",
@@ -173,7 +188,48 @@ def stream_completion(
     return {"request_index": request_index, **measurement}
 
 
-def _stop_server(process: subprocess.Popen[str]) -> None:
+def complete_chat_prompt(
+    base_url: str,
+    server: ServerSpec,
+    prompt: str,
+    *,
+    request_index: int,
+    output_tokens: int,
+) -> dict[str, Any]:
+    """Send a deterministic chat request using the model's chat template."""
+    payload = {
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": output_tokens,
+        "temperature": 0.0,
+        "seed": 42,
+        "stream": True,
+    }
+    request = Request(
+        f"{base_url}/v1/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    started_ns = time.monotonic_ns()
+    with urlopen(request, timeout=server.request_timeout_seconds) as response:
+        measurement = _read_stream(response, started_ns)
+    return {"request_index": request_index, **measurement}
+
+
+def stream_completion(
+    base_url: str, server: ServerSpec, *, request_index: int
+) -> dict[str, Any]:
+    """Send the configured serving prompt and measure client timings."""
+    return complete_prompt(
+        base_url,
+        server,
+        server.prompt,
+        request_index=request_index,
+    )
+
+
+def stop_server(process: subprocess.Popen[str]) -> None:
+    """Terminate a managed server, escalating when needed."""
     if process.poll() is not None:
         return
     process.terminate()
@@ -190,7 +246,7 @@ def run_server_benchmark(experiment: ExperimentSpec) -> ServerRunResult:
         raise ValueError("experiment does not define a server section")
     validate_model(experiment.model)
     server = experiment.server
-    port = server.port or _available_port()
+    port = server.port or available_port()
     run_id = (
         f"{experiment.experiment_id}-serve-"
         f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
@@ -224,7 +280,7 @@ def run_server_benchmark(experiment: ExperimentSpec) -> ServerRunResult:
         monitor.start()
         try:
             base_url = f"http://127.0.0.1:{port}"
-            load_time_ns = _wait_until_ready(
+            load_time_ns = wait_until_ready(
                 base_url, process, server.startup_timeout_seconds
             )
             manifest["model_load_time_ns"] = load_time_ns
@@ -259,7 +315,7 @@ def run_server_benchmark(experiment: ExperimentSpec) -> ServerRunResult:
                         if experiment.fail_fast:
                             break
         finally:
-            _stop_server(process)
+            stop_server(process)
             samples = monitor.stop()
     with (run_dir / "resource_samples.jsonl").open("w", encoding="utf-8") as stream:
         for sample in samples:

@@ -22,6 +22,7 @@ The MVP includes:
 - Immutable JSON/JSONL run artifacts and a self-contained HTML report.
 - Judge-independent exact-match, token-F1, and numeric-answer metrics.
 - Streaming load time, TTFT, end-to-end latency, and client decode rate.
+- Frozen zero-shot and engineered prompt arms over source-grounded JSONL data.
 
 Concurrent serving, MLX training, and energy sampling remain outside this first
 vertical slice. Serving latency comes from `llama-server` streaming events and
@@ -93,6 +94,27 @@ Measure end-to-end streaming latency with a fresh local server:
 uv run llmb serve configs/experiments/qwen-0.5b-smoke.yaml
 ```
 
+Run objective quality evaluation on the included EIA smoke benchmark:
+
+```bash
+uv run llmb evaluate configs/experiments/qwen-0.5b-smoke.yaml
+uv run llmb report runs/<quality-run-id>
+uv run llmb rescore runs/<quality-run-id>
+```
+
+`evaluate` records schema validity, answer accuracy, exact match, token F1,
+numeric and unit accuracy, TTFT, end-to-end latency, and quality-adjusted
+answers per second. The included 12-item dataset validates the pipeline; it is
+not a sealed benchmark for fine-tuning claims.
+
+`rescore` recomputes deterministic metrics without running inference again and
+refuses to proceed if the dataset SHA-256 differs from the run manifest.
+
+Schema validity is intentionally strict: the full response must be exactly the
+requested JSON object. A single JSON object inside a Markdown fence may still
+be parsed for semantic scoring, but it remains a schema failure. This keeps
+format compliance separate from answer quality.
+
 Generate a report from the run directory printed by the command:
 
 ```bash
@@ -113,6 +135,8 @@ Each execution creates a new directory under `runs/`:
 runs/<run-id>/
 ├── manifest.json
 ├── measurements.jsonl
+├── evaluations.jsonl
+├── summary.json
 ├── resource_samples.jsonl
 ├── failures.jsonl
 ├── logs/

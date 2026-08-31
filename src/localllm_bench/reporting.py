@@ -145,6 +145,58 @@ def _generate_microbenchmark_report(
   </table></div>"""
 
 
+def _generate_quality_report(
+    run_dir: Path,
+    manifest: dict[str, Any],
+    failures: list[dict[str, Any]],
+) -> str:
+    records = _read_jsonl(run_dir / "evaluations.jsonl")
+    summary = manifest.get("summary", {})
+    cards: list[str] = []
+    rows: list[str] = []
+    for arm, metrics in summary.items():
+        cards.extend(
+            [
+                _metric_card(
+                    f"{arm} accuracy", f"{float(metrics['answer_accuracy']):.1%}"
+                ),
+                _metric_card(
+                    f"{arm} schema", f"{float(metrics['schema_valid_rate']):.1%}"
+                ),
+            ]
+        )
+        values = [
+            arm,
+            metrics.get("items"),
+            f"{float(metrics['answer_accuracy']):.3f}",
+            f"{float(metrics['exact_match']):.3f}",
+            f"{float(metrics['token_f1']):.3f}",
+            f"{float(metrics['scorable_response_rate']):.3f}",
+            f"{float(metrics['schema_valid_rate']):.3f}",
+            f"{float(metrics['numeric_accuracy']):.3f}",
+            f"{float(metrics['unit_accuracy']):.3f}",
+            f"{float(metrics['median_ttft_ms']):.2f}",
+            f"{float(metrics['median_e2e_ms']):.2f}",
+            f"{float(metrics['quality_adjusted_answers_per_second']):.3f}",
+        ]
+        rows.append(
+            "<tr>"
+            + "".join(f"<td>{html.escape(str(value))}</td>" for value in values)
+            + "</tr>"
+        )
+    return f"""
+  <p class="meta">Evaluations: {len(records)} | failures: {len(failures)}</p>
+  <div class="metrics">{"".join(cards)}</div>
+  <p>All acceptance metrics are deterministic and judge-independent.</p>
+  <div class="panel"><table>
+    <thead><tr><th>Prompt arm</th><th>Items</th><th>Accuracy</th>
+    <th>Exact match</th><th>Token F1</th><th>Scorable</th><th>Schema</th>
+    <th>Numeric</th><th>Unit</th><th>TTFT ms</th><th>E2E ms</th>
+    <th>Correct/s</th></tr></thead>
+    <tbody>{"".join(rows)}</tbody>
+  </table></div>"""
+
+
 def generate_report(run_dir: Path) -> Path:
     """Generate a self-contained HTML summary from raw run artifacts.
 
@@ -163,11 +215,13 @@ def generate_report(run_dir: Path) -> Path:
         raise FileNotFoundError(f"missing run manifest: {manifest_path}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     failures = _read_jsonl(run_dir / "failures.jsonl")
-    content = (
-        _generate_server_report(run_dir, manifest, failures)
-        if manifest.get("run_type") == "llama-server"
-        else _generate_microbenchmark_report(run_dir, failures)
-    )
+    run_type = manifest.get("run_type")
+    if run_type == "llama-server":
+        content = _generate_server_report(run_dir, manifest, failures)
+    elif run_type == "quality-evaluation":
+        content = _generate_quality_report(run_dir, manifest, failures)
+    else:
+        content = _generate_microbenchmark_report(run_dir, failures)
     run_id = html.escape(str(manifest.get("run_id", run_dir.name)))
     document = f"""<!doctype html>
 <html lang="en">

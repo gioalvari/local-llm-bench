@@ -8,8 +8,10 @@ import typer
 
 from localllm_bench.config import load_experiment
 from localllm_bench.doctor import inspect_capabilities
+from localllm_bench.evaluation import run_evaluation
 from localllm_bench.planner import expand_plan
 from localllm_bench.reporting import generate_report
+from localllm_bench.rescore import rescore_run
 from localllm_bench.runner import run_experiment
 from localllm_bench.server import run_server_benchmark
 
@@ -61,3 +63,22 @@ def serve(
     """Measure streaming latency through a managed llama-server process."""
     result = run_server_benchmark(load_experiment(config))
     typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
+
+
+@app.command()
+def evaluate(
+    config: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+) -> None:
+    """Run source-grounded, judge-independent quality evaluation."""
+    result = run_evaluation(load_experiment(config))
+    typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
+
+
+@app.command()
+def rescore(
+    run_dir: Annotated[
+        Path, typer.Argument(exists=True, file_okay=False, readable=True)
+    ],
+) -> None:
+    """Recompute quality metrics from persisted model responses."""
+    typer.echo(json.dumps(rescore_run(run_dir), indent=2, sort_keys=True))

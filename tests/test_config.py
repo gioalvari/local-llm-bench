@@ -7,6 +7,7 @@ from localllm_bench.config import (
     BenchmarkMatrix,
     ExperimentSpec,
     ModelSpec,
+    ServerSpec,
     WorkloadSpec,
     load_experiment,
 )
@@ -54,3 +55,10 @@ def test_matrix_rejects_invalid_gpu_layer_count() -> None:
             ],
             gpu_layers=[-2],
         )
+
+
+def test_server_rejects_invalid_runtime_settings() -> None:
+    with pytest.raises(ValidationError, match="must not exceed"):
+        ServerSpec(prompt="test", batch_size=16, ubatch_size=32)
+    with pytest.raises(ValidationError, match="must be -1"):
+        ServerSpec(prompt="test", gpu_layers=-2)

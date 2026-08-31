@@ -18,6 +18,13 @@ class FlashAttention(StrEnum):
     AUTO = "auto"
 
 
+class PromptArm(StrEnum):
+    """Frozen prompt variants used for quality comparisons."""
+
+    ZERO_SHOT = "zero-shot"
+    ENGINEERED = "engineered"
+
+
 class ModelSpec(BaseModel):
     """Location and identity of one model artifact."""
 
@@ -104,6 +111,17 @@ class ServerSpec(BaseModel):
         return self
 
 
+class EvaluationSpec(BaseModel):
+    """Objective quality evaluation configuration."""
+
+    dataset: Path
+    prompt_arms: list[PromptArm] = Field(
+        default_factory=lambda: [PromptArm.ZERO_SHOT, PromptArm.ENGINEERED],
+        min_length=1,
+    )
+    output_tokens: PositiveInt = 96
+
+
 class ExperimentSpec(BaseModel):
     """Top-level benchmark experiment specification."""
 
@@ -117,6 +135,7 @@ class ExperimentSpec(BaseModel):
     model: ModelSpec
     matrix: BenchmarkMatrix
     server: ServerSpec | None = None
+    evaluation: EvaluationSpec | None = None
 
 
 def load_experiment(path: Path) -> ExperimentSpec:
