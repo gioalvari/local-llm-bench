@@ -1,0 +1,8 @@
+{"prompt_id":"grid-balance","prompt":"Explain briefly why an electricity grid must balance generation and demand in real time."}
+{"prompt_id":"storage-role","prompt":"Describe in two sentences how battery storage can support an electricity grid."}
+{"prompt_id":"peak-demand","prompt":"Explain briefly why electricity demand can be higher during peak hours."}
+{"prompt_id":"transmission","prompt":"Describe the role of high-voltage transmission lines in an electricity system."}
+{"prompt_id":"renewables","prompt":"Explain one operational challenge created by variable renewable generation."}
+{"prompt_id":"frequency","prompt":"Describe in two sentences why grid frequency is monitored by system operators."}
+{"prompt_id":"dispatch","prompt":"Explain briefly what economic dispatch tries to achieve in a power system."}
+{"prompt_id":"reserve","prompt":"Describe the purpose of operating reserves in an electricity grid."}

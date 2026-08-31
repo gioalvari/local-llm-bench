@@ -140,3 +140,35 @@ def test_generate_load_report(tmp_path: Path) -> None:
     assert "400.00 token/s" in content
     assert "P95 E2E ms" in content
     assert "failures: 1" in content
+
+
+def test_generate_open_loop_report(tmp_path: Path) -> None:
+    manifest = {
+        "run_id": "open-loop-run",
+        "run_type": "open-loop-load",
+        "peak_process_tree_rss_bytes": 1024**3,
+        "summary": [
+            {
+                "offered_requests_per_second": 8.0,
+                "requests": 24,
+                "achieved_requests_per_second": 7.9,
+                "aggregate_output_tokens_per_second": 500.0,
+                "goodput_requests_per_second": 7.5,
+                "slo_attainment_rate": 0.95,
+                "error_rate": 0.0,
+                "median_ttft_ms": 20.0,
+                "p95_ttft_ms": 40.0,
+                "median_e2e_ms": 300.0,
+                "p95_e2e_ms": 450.0,
+                "p95_client_schedule_delay_ms": 0.5,
+                "max_client_in_flight": 4,
+                "peak_process_tree_rss_bytes": 1024**3,
+            }
+        ],
+    }
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (tmp_path / "requests.jsonl").write_text("{}\n" * 24, encoding="utf-8")
+    content = generate_report(tmp_path).read_text(encoding="utf-8")
+    assert "Offered req/s" in content
+    assert "500.00 token/s" in content
+    assert "95.0%" in content

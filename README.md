@@ -104,6 +104,9 @@ The first controlled quantization comparison is documented in
 The first controlled concurrency study is documented in
 [`results/qwen-0.5b-q4-concurrency-m4-pro.md`](results/qwen-0.5b-q4-concurrency-m4-pro.md).
 
+The first fixed-rate saturation study is documented in
+[`results/qwen-0.5b-q4-open-loop-m4-pro.md`](results/qwen-0.5b-q4-open-loop-m4-pro.md).
+
 Measure end-to-end streaming latency with a fresh local server:
 
 ```bash
@@ -120,6 +123,19 @@ uv run llmb report runs/<load-run-id>
 The load runner performs an excluded warm-up, keeps context capacity per slot
 constant, and records aggregate output throughput, request throughput, median
 and P95 TTFT/end-to-end latency, error rate, and process-tree memory.
+
+Run deterministic fixed-rate open-loop traffic with a rotating prompt corpus:
+
+```bash
+uv run llmb open-loop configs/experiments/qwen-0.5b-smoke.yaml
+uv run llmb report runs/<open-loop-run-id>
+```
+
+The open-loop runner records offered and achieved request rates, output token
+throughput, latency-SLO goodput, median/P95 latency, scheduler delay, maximum
+client in-flight requests, errors, and memory. Requests are emitted at fixed
+intervals independently of previous completion, then fully drained before the
+next rate.
 
 Run objective quality evaluation on the included EIA smoke benchmark:
 
@@ -207,8 +223,8 @@ the backend's quantization-name discovery.
 
 The next serving phase will add:
 
-- Open-loop request workloads with randomized prompts.
-- Aggregate throughput and goodput under load.
+- Longer open-loop workloads with randomized inter-arrival times.
+- Repeated independent runs and confidence intervals.
 - Quality-per-second and quality-per-gigabyte Pareto analysis.
 
 ## Fine-tuning track

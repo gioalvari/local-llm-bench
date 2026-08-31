@@ -44,3 +44,12 @@ load:
   concurrency_levels: [1, 2, 4]
   waves_per_level: 3
   warmup_requests: 1
+open_loop:
+  prompt_dataset: datasets/load/energy-prompts.jsonl
+  arrival_rates_rps: [2, 4, 8, 12]
+  duration_seconds: 3
+  warmup_requests: 1
+  server_slots: 4
+  max_client_workers: 32
+  latency_slo_ms: 500
+  cooldown_seconds: 0.5

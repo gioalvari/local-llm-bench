@@ -45,3 +45,6 @@ Sources:
 - https://www.eia.gov/energyexplained/electricity/electricity-in-the-us.php
 - https://www.eia.gov/energyexplained/electricity/delivery-to-consumers.php
 - https://www.eia.gov/energyexplained/electricity/energy-storage-for-electricity-generation.php
+
+`load/energy-prompts.jsonl` is a deterministic rotating prompt corpus for load
+generation. It contains no expected answers and is not part of quality scoring.

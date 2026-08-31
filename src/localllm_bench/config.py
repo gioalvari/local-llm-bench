@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import yaml
-from pydantic import BaseModel, Field, PositiveInt, model_validator
+from pydantic import BaseModel, Field, PositiveFloat, PositiveInt, model_validator
 
 NonNegativeInt = Annotated[int, Field(ge=0)]
 
@@ -138,6 +138,27 @@ class LoadSpec(BaseModel):
         return self
 
 
+class OpenLoopSpec(BaseModel):
+    """Fixed-rate open-loop serving workload."""
+
+    prompt_dataset: Path
+    arrival_rates_rps: list[PositiveFloat] = Field(min_length=1)
+    duration_seconds: PositiveFloat = 3.0
+    warmup_requests: NonNegativeInt = 1
+    server_slots: PositiveInt = 4
+    max_client_workers: PositiveInt = 32
+    latency_slo_ms: PositiveFloat = 500.0
+    cooldown_seconds: Annotated[float, Field(ge=0)] = 0.5
+
+    @model_validator(mode="after")
+    def validate_rates(self) -> "OpenLoopSpec":
+        """Require unique arrival rates in increasing order."""
+        rates = [float(value) for value in self.arrival_rates_rps]
+        if rates != sorted(set(rates)):
+            raise ValueError("arrival_rates_rps must be unique and increasing")
+        return self
+
+
 class ExperimentSpec(BaseModel):
     """Top-level benchmark experiment specification."""
 
@@ -153,6 +174,7 @@ class ExperimentSpec(BaseModel):
     server: ServerSpec | None = None
     evaluation: EvaluationSpec | None = None
     load: LoadSpec | None = None
+    open_loop: OpenLoopSpec | None = None
 
 
 def load_experiment(path: Path) -> ExperimentSpec:

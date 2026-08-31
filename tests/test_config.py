@@ -8,6 +8,7 @@ from localllm_bench.config import (
     ExperimentSpec,
     LoadSpec,
     ModelSpec,
+    OpenLoopSpec,
     ServerSpec,
     WorkloadSpec,
     load_experiment,
@@ -78,3 +79,10 @@ def test_load_requires_unique_increasing_levels() -> None:
         LoadSpec(concurrency_levels=[2, 1])
     with pytest.raises(ValidationError, match="unique and increasing"):
         LoadSpec(concurrency_levels=[1, 1])
+
+
+def test_open_loop_requires_unique_increasing_rates() -> None:
+    with pytest.raises(ValidationError, match="unique and increasing"):
+        OpenLoopSpec(prompt_dataset=Path("prompts.jsonl"), arrival_rates_rps=[2, 1])
+    with pytest.raises(ValidationError, match="unique and increasing"):
+        OpenLoopSpec(prompt_dataset=Path("prompts.jsonl"), arrival_rates_rps=[1, 1])
