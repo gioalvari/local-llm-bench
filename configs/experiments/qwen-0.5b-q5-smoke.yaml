@@ -1,0 +1,89 @@
+schema_version: "1"
+experiment_id: qwen-0-5b-q5-smoke
+output_dir: runs
+llama_bench_binary: llama-bench
+sample_interval_ms: 100
+fail_fast: true
+model:
+  name: Qwen2.5-0.5B-Instruct-Q5_K_M
+  path: models/Qwen2.5-0.5B-Instruct-Q5_K_M.gguf
+  source_repo: bartowski/Qwen2.5-0.5B-Instruct-GGUF
+  source_revision: 41ba88dbac95fed2528c92514c131d73eb5a174b
+  sha256: a0a413dcbb4676f21d4c951b98a393324694edb1a20a4f9547d1de8d2919ff3b
+  quantization: Q5_K_M
+matrix:
+  repetitions: 3
+  workloads:
+    - name: short
+      prompt_tokens: 128
+      generation_tokens: 64
+    - name: standard
+      prompt_tokens: 512
+      generation_tokens: 128
+  batch_sizes: [128, 512]
+  ubatch_sizes: [128]
+  threads: [10]
+  gpu_layers: [0, -1]
+  flash_attention: ["off", "on"]
+server:
+  prompt: "Explain in two sentences why electricity grids must balance supply and demand."
+  repetitions: 5
+  output_tokens: 64
+  context_size: 2048
+  batch_size: 512
+  ubatch_size: 128
+  threads: 10
+  gpu_layers: -1
+  flash_attention: "on"
+  parallel: 1
+evaluation:
+  dataset: datasets/energy/eia-electricity-smoke.jsonl
+  prompt_arms: [zero-shot, engineered]
+  output_tokens: 96
+load:
+  concurrency_levels: [1, 2, 4]
+  waves_per_level: 3
+  warmup_requests: 1
+open_loop:
+  prompt_dataset: datasets/load/energy-prompts.jsonl
+  arrival_rates_rps: [2, 4, 8, 12]
+  duration_seconds: 3
+  warmup_requests: 1
+  server_slots: 4
+  max_client_workers: 32
+  latency_slo_ms: 500
+  cooldown_seconds: 0.5
+context_sweep:
+  corpus: datasets/context/energy-market.txt
+  repetitions: 3
+  warmup_requests: 1
+  output_tokens: 64
+  cases:
+    - name: window-256-prompt-128
+      series: [window-size]
+      context_size: 256
+      prompt_tokens: 128
+    - name: window-1024-prompt-128
+      series: [window-size]
+      context_size: 1024
+      prompt_tokens: 128
+    - name: window-2048-prompt-128
+      series: [window-size]
+      context_size: 2048
+      prompt_tokens: 128
+    - name: window-4096-prompt-128
+      series: [window-size, prompt-length]
+      context_size: 4096
+      prompt_tokens: 128
+    - name: window-4096-prompt-512
+      series: [prompt-length]
+      context_size: 4096
+      prompt_tokens: 512
+    - name: window-4096-prompt-1024
+      series: [prompt-length]
+      context_size: 4096
+      prompt_tokens: 1024
+    - name: window-4096-prompt-2048
+      series: [prompt-length]
+      context_size: 4096
+      prompt_tokens: 2048

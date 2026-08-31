@@ -53,6 +53,14 @@ def test_load_q8_example() -> None:
     )
 
 
+def test_load_q5_example() -> None:
+    spec = load_experiment(Path("configs/experiments/qwen-0.5b-q5-smoke.yaml"))
+    assert spec.model.quantization == "Q5_K_M"
+    assert spec.model.sha256 == (
+        "a0a413dcbb4676f21d4c951b98a393324694edb1a20a4f9547d1de8d2919ff3b"
+    )
+
+
 def test_workload_rejects_no_work() -> None:
     with pytest.raises(ValidationError, match="at least one token"):
         WorkloadSpec(name="empty", prompt_tokens=0, generation_tokens=0)

@@ -92,6 +92,16 @@ The first measured Apple M4 Pro smoke run is summarized in
 An equivalent pinned Q8_0 experiment is available at
 `configs/experiments/qwen-0.5b-q8-smoke.yaml`.
 
+The intermediate pinned Q5_K_M experiment is available at
+`configs/experiments/qwen-0.5b-q5-smoke.yaml`.
+
+```bash
+curl --fail --location \
+  --output models/Qwen2.5-0.5B-Instruct-Q5_K_M.gguf \
+  https://huggingface.co/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/41ba88dbac95fed2528c92514c131d73eb5a174b/Qwen2.5-0.5B-Instruct-Q5_K_M.gguf
+uv run llmb run configs/experiments/qwen-0.5b-q5-smoke.yaml
+```
+
 ```bash
 curl --fail --location \
   --output models/Qwen2.5-0.5B-Instruct-Q8_0.gguf \
@@ -101,6 +111,9 @@ uv run llmb run configs/experiments/qwen-0.5b-q8-smoke.yaml
 
 The first controlled quantization comparison is documented in
 [`results/qwen-0.5b-q4-vs-q8-m4-pro.md`](results/qwen-0.5b-q4-vs-q8-m4-pro.md).
+
+The expanded three-level quantization comparison is documented in
+[`results/qwen-0.5b-q4-q5-q8-m4-pro.md`](results/qwen-0.5b-q4-q5-q8-m4-pro.md).
 
 The first controlled concurrency study is documented in
 [`results/qwen-0.5b-q4-concurrency-m4-pro.md`](results/qwen-0.5b-q4-concurrency-m4-pro.md).

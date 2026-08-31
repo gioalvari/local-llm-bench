@@ -124,6 +124,20 @@ def test_compare_variants_writes_aggregate_artifacts(tmp_path: Path) -> None:
     assert "Q8_0" in (result.output_dir / "comparison.html").read_text(encoding="utf-8")
 
 
+def test_compare_variants_supports_three_quantizations(tmp_path: Path) -> None:
+    variants = [
+        _write_variant(tmp_path / "q4", "Q4_K_M"),
+        _write_variant(tmp_path / "q5", "Q5_K_M"),
+        _write_variant(tmp_path / "q8", "Q8_0"),
+    ]
+    result = compare_variants(variants, tmp_path / "comparison")
+    assert [variant.quantization for variant in result.variants] == [
+        "Q4_K_M",
+        "Q5_K_M",
+        "Q8_0",
+    ]
+
+
 def test_compare_variants_rejects_dataset_mismatch(tmp_path: Path) -> None:
     variants = [
         _write_variant(tmp_path / "q4", "Q4_K_M", dataset_hash="first"),
