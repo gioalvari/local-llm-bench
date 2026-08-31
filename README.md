@@ -88,6 +88,19 @@ before loading it.
 The first measured Apple M4 Pro smoke run is summarized in
 [`results/qwen-0.5b-m4-pro-smoke.md`](results/qwen-0.5b-m4-pro-smoke.md).
 
+An equivalent pinned Q8_0 experiment is available at
+`configs/experiments/qwen-0.5b-q8-smoke.yaml`.
+
+```bash
+curl --fail --location \
+  --output models/Qwen2.5-0.5B-Instruct-Q8_0.gguf \
+  https://huggingface.co/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/41ba88dbac95fed2528c92514c131d73eb5a174b/Qwen2.5-0.5B-Instruct-Q8_0.gguf
+uv run llmb run configs/experiments/qwen-0.5b-q8-smoke.yaml
+```
+
+The first controlled quantization comparison is documented in
+[`results/qwen-0.5b-q4-vs-q8-m4-pro.md`](results/qwen-0.5b-q4-vs-q8-m4-pro.md).
+
 Measure end-to-end streaming latency with a fresh local server:
 
 ```bash
@@ -109,6 +122,25 @@ not a sealed benchmark for fine-tuning claims.
 
 `rescore` recomputes deterministic metrics without running inference again and
 refuses to proceed if the dataset SHA-256 differs from the run manifest.
+
+Compare matched run trios after completing both variants:
+
+```bash
+uv run llmb compare \
+  --micro-run runs/<q4-micro> --serving-run runs/<q4-serving> \
+  --quality-run runs/<q4-quality> \
+  --micro-run runs/<q8-micro> --serving-run runs/<q8-serving> \
+  --quality-run runs/<q8-quality> \
+  --output-dir runs/<comparison-id>
+```
+
+The comparator rejects different source checkpoints, dataset digests, benchmark
+protocols, hardware fingerprints, `llama.cpp` binaries, and duplicate
+quantizations.
+
+The comparison's model-size field is the tensor size reported by `llama.cpp`;
+peak RSS comes from the managed serving process tree. Neither value should be
+interpreted as standalone VRAM on unified-memory hardware.
 
 Schema validity is intentionally strict: the full response must be exactly the
 requested JSON object. A single JSON object inside a Markdown fence may still

@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 
+from localllm_bench.comparison import VariantRuns, compare_variants
 from localllm_bench.config import load_experiment
 from localllm_bench.doctor import inspect_capabilities
 from localllm_bench.evaluation import run_evaluation
@@ -82,3 +83,29 @@ def rescore(
 ) -> None:
     """Recompute quality metrics from persisted model responses."""
     typer.echo(json.dumps(rescore_run(run_dir), indent=2, sort_keys=True))
+
+
+@app.command()
+def compare(
+    micro_run: Annotated[
+        list[Path], typer.Option("--micro-run", exists=True, file_okay=False)
+    ],
+    serving_run: Annotated[
+        list[Path], typer.Option("--serving-run", exists=True, file_okay=False)
+    ],
+    quality_run: Annotated[
+        list[Path], typer.Option("--quality-run", exists=True, file_okay=False)
+    ],
+    output_dir: Annotated[Path, typer.Option("--output-dir")],
+) -> None:
+    """Compare matched microbenchmark, serving, and quality runs."""
+    if not (len(micro_run) == len(serving_run) == len(quality_run)):
+        raise typer.BadParameter("run options must have matching counts")
+    variants = [
+        VariantRuns(microbenchmark=micro, serving=serving, quality=quality)
+        for micro, serving, quality in zip(
+            micro_run, serving_run, quality_run, strict=True
+        )
+    ]
+    result = compare_variants(variants, output_dir)
+    typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))

@@ -42,6 +42,14 @@ def test_load_example() -> None:
     assert len(spec.matrix.workloads) == 2
 
 
+def test_load_q8_example() -> None:
+    spec = load_experiment(Path("configs/experiments/qwen-0.5b-q8-smoke.yaml"))
+    assert spec.model.quantization == "Q8_0"
+    assert spec.model.sha256 == (
+        "25130a98aa782284a7dabea0c23245b2fd371ed47244e79d78b8ec23245fdf96"
+    )
+
+
 def test_workload_rejects_no_work() -> None:
     with pytest.raises(ValidationError, match="at least one token"):
         WorkloadSpec(name="empty", prompt_tokens=0, generation_tokens=0)

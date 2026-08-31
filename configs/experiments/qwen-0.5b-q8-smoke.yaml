@@ -1,0 +1,42 @@
+schema_version: "1"
+experiment_id: qwen-0-5b-q8-smoke
+output_dir: runs
+llama_bench_binary: llama-bench
+sample_interval_ms: 100
+fail_fast: true
+model:
+  name: Qwen2.5-0.5B-Instruct-Q8_0
+  path: models/Qwen2.5-0.5B-Instruct-Q8_0.gguf
+  source_repo: bartowski/Qwen2.5-0.5B-Instruct-GGUF
+  source_revision: 41ba88dbac95fed2528c92514c131d73eb5a174b
+  sha256: 25130a98aa782284a7dabea0c23245b2fd371ed47244e79d78b8ec23245fdf96
+  quantization: Q8_0
+matrix:
+  repetitions: 3
+  workloads:
+    - name: short
+      prompt_tokens: 128
+      generation_tokens: 64
+    - name: standard
+      prompt_tokens: 512
+      generation_tokens: 128
+  batch_sizes: [128, 512]
+  ubatch_sizes: [128]
+  threads: [10]
+  gpu_layers: [0, -1]
+  flash_attention: ["off", "on"]
+server:
+  prompt: "Explain in two sentences why electricity grids must balance supply and demand."
+  repetitions: 5
+  output_tokens: 64
+  context_size: 2048
+  batch_size: 512
+  ubatch_size: 128
+  threads: 10
+  gpu_layers: -1
+  flash_attention: "on"
+  parallel: 1
+evaluation:
+  dataset: datasets/energy/eia-electricity-smoke.jsonl
+  prompt_arms: [zero-shot, engineered]
+  output_tokens: 96
