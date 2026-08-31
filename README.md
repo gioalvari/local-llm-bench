@@ -24,7 +24,7 @@ The MVP includes:
 - Streaming load time, TTFT, end-to-end latency, and client decode rate.
 - Frozen zero-shot and engineered prompt arms over source-grounded JSONL data.
 
-Concurrent serving, MLX training, and energy sampling remain outside this first
+Open-loop serving, MLX training, and energy sampling remain outside this first
 vertical slice. Serving latency comes from `llama-server` streaming events and
 is never inferred from `llama-bench` timings.
 
@@ -101,11 +101,25 @@ uv run llmb run configs/experiments/qwen-0.5b-q8-smoke.yaml
 The first controlled quantization comparison is documented in
 [`results/qwen-0.5b-q4-vs-q8-m4-pro.md`](results/qwen-0.5b-q4-vs-q8-m4-pro.md).
 
+The first controlled concurrency study is documented in
+[`results/qwen-0.5b-q4-concurrency-m4-pro.md`](results/qwen-0.5b-q4-concurrency-m4-pro.md).
+
 Measure end-to-end streaming latency with a fresh local server:
 
 ```bash
 uv run llmb serve configs/experiments/qwen-0.5b-smoke.yaml
 ```
+
+Run closed-loop synchronized load at concurrency 1, 2, and 4:
+
+```bash
+uv run llmb load configs/experiments/qwen-0.5b-smoke.yaml
+uv run llmb report runs/<load-run-id>
+```
+
+The load runner performs an excluded warm-up, keeps context capacity per slot
+constant, and records aggregate output throughput, request throughput, median
+and P95 TTFT/end-to-end latency, error rate, and process-tree memory.
 
 Run objective quality evaluation on the included EIA smoke benchmark:
 
@@ -191,9 +205,9 @@ The `llama-bench` executable has no version flag. Its SHA-256 is captured by
 Remote model configurations pin the exact GGUF filename instead of relying on
 the backend's quantization-name discovery.
 
-The planned serving phase will add:
+The next serving phase will add:
 
-- Concurrent and open-loop request workloads.
+- Open-loop request workloads with randomized prompts.
 - Aggregate throughput and goodput under load.
 - Quality-per-second and quality-per-gigabyte Pareto analysis.
 

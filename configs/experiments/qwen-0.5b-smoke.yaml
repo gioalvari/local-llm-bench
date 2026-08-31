@@ -40,3 +40,7 @@ evaluation:
   dataset: datasets/energy/eia-electricity-smoke.jsonl
   prompt_arms: [zero-shot, engineered]
   output_tokens: 96
+load:
+  concurrency_levels: [1, 2, 4]
+  waves_per_level: 3
+  warmup_requests: 1

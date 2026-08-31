@@ -108,3 +108,35 @@ def test_generate_quality_report(tmp_path: Path) -> None:
     assert "engineered accuracy" in content
     assert "50.0%" in content
     assert "Correct/s" in content
+
+
+def test_generate_load_report(tmp_path: Path) -> None:
+    manifest = {
+        "run_id": "load-run",
+        "run_type": "concurrency-load",
+        "peak_process_tree_rss_bytes": 1024**3,
+        "summary": [
+            {
+                "concurrency": 2,
+                "requests": 6,
+                "error_rate": 0.0,
+                "aggregate_output_tokens_per_second": 400.0,
+                "requests_per_second": 6.25,
+                "median_ttft_ms": 20.0,
+                "p95_ttft_ms": 25.0,
+                "median_e2e_ms": 300.0,
+                "p95_e2e_ms": 350.0,
+                "max_wave_launch_spread_ms": 0.5,
+                "peak_process_tree_rss_bytes": 1024**3,
+            }
+        ],
+    }
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (tmp_path / "requests.jsonl").write_text(
+        "{}\n" * 5 + '{"error":"failed"}\n', encoding="utf-8"
+    )
+    content = generate_report(tmp_path).read_text(encoding="utf-8")
+    assert "Peak aggregate throughput" in content
+    assert "400.00 token/s" in content
+    assert "P95 E2E ms" in content
+    assert "failures: 1" in content

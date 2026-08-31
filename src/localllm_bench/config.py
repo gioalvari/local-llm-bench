@@ -122,6 +122,22 @@ class EvaluationSpec(BaseModel):
     output_tokens: PositiveInt = 96
 
 
+class LoadSpec(BaseModel):
+    """Closed-loop concurrent serving workload."""
+
+    concurrency_levels: list[PositiveInt] = Field(min_length=1)
+    waves_per_level: PositiveInt = 3
+    warmup_requests: NonNegativeInt = 1
+
+    @model_validator(mode="after")
+    def validate_levels(self) -> "LoadSpec":
+        """Require unique concurrency levels in increasing order."""
+        levels = [int(value) for value in self.concurrency_levels]
+        if levels != sorted(set(levels)):
+            raise ValueError("concurrency_levels must be unique and increasing")
+        return self
+
+
 class ExperimentSpec(BaseModel):
     """Top-level benchmark experiment specification."""
 
@@ -136,6 +152,7 @@ class ExperimentSpec(BaseModel):
     matrix: BenchmarkMatrix
     server: ServerSpec | None = None
     evaluation: EvaluationSpec | None = None
+    load: LoadSpec | None = None
 
 
 def load_experiment(path: Path) -> ExperimentSpec:

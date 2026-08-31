@@ -197,6 +197,59 @@ def _generate_quality_report(
   </table></div>"""
 
 
+def _generate_load_report(
+    run_dir: Path,
+    manifest: dict[str, Any],
+    _failures: list[dict[str, Any]],
+) -> str:
+    records = _read_jsonl(run_dir / "requests.jsonl")
+    failed_requests = sum("error" in record for record in records)
+    summary = manifest.get("summary", [])
+    rows: list[str] = []
+    for level in summary:
+        values = [
+            level.get("concurrency"),
+            level.get("requests"),
+            f"{float(level['error_rate']):.1%}",
+            f"{float(level['aggregate_output_tokens_per_second']):.2f}",
+            f"{float(level['requests_per_second']):.2f}",
+            f"{float(level['median_ttft_ms']):.2f}",
+            f"{float(level['p95_ttft_ms']):.2f}",
+            f"{float(level['median_e2e_ms']):.2f}",
+            f"{float(level['p95_e2e_ms']):.2f}",
+            f"{float(level['max_wave_launch_spread_ms']):.2f}",
+            _format_gib(level.get("peak_process_tree_rss_bytes")),
+        ]
+        rows.append(
+            "<tr>"
+            + "".join(f"<td>{html.escape(str(value))}</td>" for value in values)
+            + "</tr>"
+        )
+    peak_throughput = max(
+        (float(level["aggregate_output_tokens_per_second"]) for level in summary),
+        default=0.0,
+    )
+    cards = [
+        _metric_card("Measured requests", str(len(records))),
+        _metric_card("Peak aggregate throughput", f"{peak_throughput:.2f} token/s"),
+        _metric_card(
+            "Peak process RSS",
+            f"{_format_gib(manifest.get('peak_process_tree_rss_bytes'))} GiB",
+        ),
+    ]
+    return f"""
+  <p class="meta">Requests: {len(records)} | failures: {failed_requests}</p>
+  <div class="metrics">{"".join(cards)}</div>
+  <p>Closed-loop synchronized waves; warm-up and model load are excluded.</p>
+  <div class="panel"><table>
+    <thead><tr><th>Concurrency</th><th>Requests</th><th>Error rate</th>
+    <th>Output token/s</th><th>Request/s</th><th>Median TTFT ms</th>
+    <th>P95 TTFT ms</th><th>Median E2E ms</th><th>P95 E2E ms</th>
+    <th>Max launch spread ms</th><th>Peak RSS GiB</th></tr></thead>
+    <tbody>{"".join(rows)}</tbody>
+  </table></div>"""
+
+
 def generate_report(run_dir: Path) -> Path:
     """Generate a self-contained HTML summary from raw run artifacts.
 
@@ -220,6 +273,8 @@ def generate_report(run_dir: Path) -> Path:
         content = _generate_server_report(run_dir, manifest, failures)
     elif run_type == "quality-evaluation":
         content = _generate_quality_report(run_dir, manifest, failures)
+    elif run_type == "concurrency-load":
+        content = _generate_load_report(run_dir, manifest, failures)
     else:
         content = _generate_microbenchmark_report(run_dir, failures)
     run_id = html.escape(str(manifest.get("run_id", run_dir.name)))

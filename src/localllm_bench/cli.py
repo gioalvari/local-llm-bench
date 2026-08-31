@@ -10,6 +10,7 @@ from localllm_bench.comparison import VariantRuns, compare_variants
 from localllm_bench.config import load_experiment
 from localllm_bench.doctor import inspect_capabilities
 from localllm_bench.evaluation import run_evaluation
+from localllm_bench.load import run_load_benchmark
 from localllm_bench.planner import expand_plan
 from localllm_bench.reporting import generate_report
 from localllm_bench.rescore import rescore_run
@@ -108,4 +109,13 @@ def compare(
         )
     ]
     result = compare_variants(variants, output_dir)
+    typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
+
+
+@app.command()
+def load(
+    config: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+) -> None:
+    """Run synchronized closed-loop concurrent request waves."""
+    result = run_load_benchmark(load_experiment(config))
     typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))

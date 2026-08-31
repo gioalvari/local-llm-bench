@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from localllm_bench.config import (
     BenchmarkMatrix,
     ExperimentSpec,
+    LoadSpec,
     ModelSpec,
     ServerSpec,
     WorkloadSpec,
@@ -70,3 +71,10 @@ def test_server_rejects_invalid_runtime_settings() -> None:
         ServerSpec(prompt="test", batch_size=16, ubatch_size=32)
     with pytest.raises(ValidationError, match="must be -1"):
         ServerSpec(prompt="test", gpu_layers=-2)
+
+
+def test_load_requires_unique_increasing_levels() -> None:
+    with pytest.raises(ValidationError, match="unique and increasing"):
+        LoadSpec(concurrency_levels=[2, 1])
+    with pytest.raises(ValidationError, match="unique and increasing"):
+        LoadSpec(concurrency_levels=[1, 1])
