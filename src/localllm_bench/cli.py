@@ -11,6 +11,7 @@ from localllm_bench.config import load_experiment
 from localllm_bench.context_sweep import run_context_sweep
 from localllm_bench.doctor import inspect_capabilities
 from localllm_bench.evaluation import run_evaluation
+from localllm_bench.factor_analysis import analyze_factor_run
 from localllm_bench.load import run_load_benchmark
 from localllm_bench.open_loop import run_open_loop_benchmark
 from localllm_bench.planner import expand_plan
@@ -138,4 +139,16 @@ def context_sweep(
 ) -> None:
     """Measure exact prompt lengths across configured context windows."""
     result = run_context_sweep(load_experiment(config))
+    typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
+
+
+@app.command("analyze-factors")
+def analyze_factors(
+    run_dir: Annotated[
+        Path, typer.Argument(exists=True, file_okay=False, readable=True)
+    ],
+    output_dir: Annotated[Path, typer.Option("--output-dir")],
+) -> None:
+    """Analyze paired offload, Flash Attention, and batch effects."""
+    result = analyze_factor_run(run_dir, output_dir)
     typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))

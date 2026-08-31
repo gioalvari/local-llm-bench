@@ -110,6 +110,9 @@ The first fixed-rate saturation study is documented in
 The controlled context-window and prompt-length study is documented in
 [`results/qwen-0.5b-q4-context-m4-pro.md`](results/qwen-0.5b-q4-context-m4-pro.md).
 
+The paired offload, Flash Attention, and batch-size analysis is documented in
+[`results/qwen-0.5b-factor-effects-m4-pro.md`](results/qwen-0.5b-factor-effects-m4-pro.md).
+
 Measure end-to-end streaming latency with a fresh local server:
 
 ```bash
@@ -153,6 +156,19 @@ one-slot server for every case. It records load time, prompt evaluation,
 TTFT/end-to-end latency, decode rate, and memory. The configured sweep separates
 window-size effects at a fixed prompt length from prompt-length effects at a
 fixed context window.
+
+Analyze the paired effects in a completed two-level microbenchmark matrix:
+
+```bash
+uv run llmb analyze-factors runs/<microbenchmark-run-id> \
+  --output-dir runs/<factor-analysis-id>
+```
+
+The analysis pairs cells while holding every other setting fixed, reports
+phase-specific geometric-mean speed ratios with deterministic bootstrap
+intervals, and extracts a per-workload speed/process-RSS Pareto frontier. Zero
+GPU layers means no model layers are offloaded; it is not labeled CPU-only
+because backend operations may still use the accelerator.
 
 Run objective quality evaluation on the included EIA smoke benchmark:
 
