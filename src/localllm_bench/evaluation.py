@@ -130,7 +130,11 @@ def run_evaluation(experiment: ExperimentSpec) -> EvaluationRunResult:
         "prompt_version": PROMPT_VERSION,
         "experiment": experiment.model_dump(mode="json"),
         "command": command,
-        "capabilities": inspect_capabilities(run_dir).model_dump(mode="json"),
+        "capabilities": inspect_capabilities(
+            run_dir,
+            llama_bench_binary=experiment.llama_bench_binary,
+            llama_server_binary=experiment.llama_server_binary,
+        ).model_dump(mode="json"),
     }
     manifest_path = run_dir / "manifest.json"
     _write_manifest(manifest_path, manifest)

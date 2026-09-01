@@ -1,12 +1,15 @@
+import hashlib
 import json
 import sys
 from pathlib import Path
 
 import pytest
 
-from localllm_bench.config import ExperimentSpec
+from localllm_bench.config import ArrivalProcess, ExperimentSpec, OpenLoopSpec
 from localllm_bench.open_loop import (
     LoadPrompt,
+    arrival_offsets_ns,
+    build_arrival_schedule,
     load_prompts,
     prompt_dataset_sha256,
     request_count,
@@ -15,7 +18,14 @@ from localllm_bench.open_loop import (
 )
 
 
-def _spec(tmp_path: Path, executable: str) -> ExperimentSpec:
+def _spec(
+    tmp_path: Path,
+    executable: str,
+    *,
+    arrival_process: ArrivalProcess = ArrivalProcess.FIXED,
+    arrival_rate: float = 50,
+    duration_seconds: float = 0.06,
+) -> ExperimentSpec:
     model = tmp_path / "model.gguf"
     model.write_bytes(b"model")
     prompts = tmp_path / "prompts.jsonl"
@@ -26,6 +36,9 @@ def _spec(tmp_path: Path, executable: str) -> ExperimentSpec:
     )
     return ExperimentSpec.model_validate(
         {
+            "schema_version": (
+                "2" if arrival_process is ArrivalProcess.POISSON else "1"
+            ),
             "experiment_id": "open-loop-test",
             "output_dir": tmp_path / "runs",
             "llama_server_binary": executable,
@@ -50,8 +63,9 @@ def _spec(tmp_path: Path, executable: str) -> ExperimentSpec:
             },
             "open_loop": {
                 "prompt_dataset": str(prompts),
-                "arrival_rates_rps": [50],
-                "duration_seconds": 0.06,
+                "arrival_rates_rps": [arrival_rate],
+                "arrival_process": arrival_process.value,
+                "duration_seconds": duration_seconds,
                 "warmup_requests": 1,
                 "server_slots": 2,
                 "max_client_workers": 4,
@@ -82,6 +96,47 @@ def test_request_count_has_at_least_one_arrival() -> None:
     assert request_count(8, 3) == 24
     assert request_count(2.5, 3) == 8
     assert request_count(0.1, 0.1) == 1
+
+
+def test_fixed_arrival_offsets_preserve_existing_schedule() -> None:
+    assert arrival_offsets_ns(2.5, 1.0, ArrivalProcess.FIXED, 42) == [
+        0,
+        400_000_000,
+        800_000_000,
+    ]
+
+
+def test_poisson_arrival_offsets_are_seeded_and_bounded() -> None:
+    first = arrival_offsets_ns(8, 3, ArrivalProcess.POISSON, 42)
+    repeated = arrival_offsets_ns(8, 3, ArrivalProcess.POISSON, 42)
+    changed = arrival_offsets_ns(8, 3, ArrivalProcess.POISSON, 43)
+    assert first == repeated
+    assert first != changed
+    assert first == sorted(first)
+    assert all(0 <= offset < 3_000_000_000 for offset in first)
+    gaps = {right - left for left, right in zip(first, first[1:], strict=False)}
+    assert len(gaps) > 1
+    assert first[:5] == [
+        20_907_706,
+        186_119_522,
+        204_945_892,
+        206_686_488,
+        230_942_040,
+    ]
+
+
+def test_poisson_rate_stream_is_independent_and_may_be_empty() -> None:
+    smaller = OpenLoopSpec(
+        prompt_dataset=Path("prompts.jsonl"),
+        arrival_rates_rps=[2, 8],
+        arrival_process=ArrivalProcess.POISSON,
+        arrival_seed=7,
+    )
+    expanded = smaller.model_copy(update={"arrival_rates_rps": [2, 4, 8]})
+    smaller_schedule = build_arrival_schedule(smaller)
+    expanded_schedule = build_arrival_schedule(expanded)
+    assert smaller_schedule["windows"][1] == expanded_schedule["windows"][2]
+    assert arrival_offsets_ns(1e-6, 1e-6, ArrivalProcess.POISSON, 42) == []
 
 
 def test_summarize_rate_reports_goodput_and_in_flight() -> None:
@@ -121,6 +176,16 @@ def test_summarize_rate_reports_goodput_and_in_flight() -> None:
     assert summary["slo_attainment_rate"] == pytest.approx(1 / 3)
     assert summary["max_client_in_flight"] == 3
     assert summary["p95_client_schedule_delay_ms"] == 0.3
+
+
+def test_summarize_empty_poisson_window_marks_statistics_undefined() -> None:
+    summary = summarize_rate(1, 1_000_000_000, [], [], 500, 1_000_000_000)
+    assert summary["realized_offered_requests_per_second"] == 0.0
+    assert summary["achieved_requests_per_second"] == 0.0
+    assert summary["error_rate"] is None
+    assert summary["slo_attainment_rate"] is None
+    assert summary["median_ttft_ms"] is None
+    assert summary["p95_client_schedule_delay_ms"] is None
 
 
 def test_run_open_loop_with_threaded_fake_server(tmp_path: Path) -> None:
@@ -170,11 +235,76 @@ ThreadingHTTPServer(('127.0.0.1', args.port), Handler).serve_forever()
     result = run_open_loop_benchmark(_spec(tmp_path, str(launcher)))
     assert result.completed_requests == 3
     assert result.failed_requests == 0
-    assert result.summary[0]["max_client_in_flight"] >= 2
+    max_in_flight = result.summary[0]["max_client_in_flight"]
+    assert isinstance(max_in_flight, int)
+    assert max_in_flight >= 2
+    assert result.summary[0]["realized_offered_requests_per_second"] == 50.0
     manifest = json.loads(
         (result.run_dir / "manifest.json").read_text(encoding="utf-8")
     )
+    assert manifest["artifact_schema_version"] == "2"
     assert manifest["warmup_completed"] == 1
     assert manifest["prompt_count"] == 2
     assert manifest["context_tokens_per_slot"] == 64
     assert manifest["effective_server"]["context_size"] == 128
+    schedule_path = result.run_dir / "arrival_schedule.json"
+    schedule = json.loads(schedule_path.read_text(encoding="utf-8"))
+    assert schedule["algorithm"] == "fixed-spacing-v1"
+    assert schedule["windows"][0]["scheduled_offsets_ns"] == [
+        0,
+        20_000_000,
+        40_000_000,
+    ]
+    assert (
+        manifest["arrival_schedule_sha256"]
+        == hashlib.sha256(schedule_path.read_bytes()).hexdigest()
+    )
+    requests = [
+        json.loads(line)
+        for line in (result.run_dir / "requests.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert [record["scheduled_offset_ns"] for record in requests] == [
+        0,
+        20_000_000,
+        40_000_000,
+    ]
+    assert [record["rate_request_index"] for record in requests] == [0, 1, 2]
+    assert [record["prompt_id"] for record in requests] == ["first", "second", "first"]
+
+    poisson = run_open_loop_benchmark(
+        _spec(
+            tmp_path,
+            str(launcher),
+            arrival_process=ArrivalProcess.POISSON,
+        )
+    )
+    poisson_schedule = json.loads(
+        (poisson.run_dir / "arrival_schedule.json").read_text(encoding="utf-8")
+    )
+    poisson_requests = [
+        json.loads(line)
+        for line in (poisson.run_dir / "requests.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert poisson_schedule["algorithm"] == "poisson-exponential-v1"
+    assert [record["scheduled_offset_ns"] for record in poisson_requests] == (
+        poisson_schedule["windows"][0]["scheduled_offsets_ns"]
+    )
+    assert poisson.completed_requests == len(poisson_requests) == 7
+
+    empty = run_open_loop_benchmark(
+        _spec(
+            tmp_path,
+            str(launcher),
+            arrival_process=ArrivalProcess.POISSON,
+            arrival_rate=1e-6,
+            duration_seconds=1e-6,
+        )
+    )
+    assert empty.completed_requests == 0
+    assert empty.failed_requests == 0
+    assert empty.summary[0]["slo_attainment_rate"] is None
+    assert (empty.run_dir / "requests.jsonl").read_text(encoding="utf-8") == ""

@@ -57,6 +57,10 @@ exceeds it by 25 percentage points in strict schema validity, and uses 16.8%
 less serving RSS. Q8_0's primary benefit in this comparison is prompt-processing
 throughput, not measured generation quality or memory efficiency.
 
+On the joint zero-shot quality-per-second and quality-per-GiB objective, Q4_K_M
+is the sole non-dominated Pareto point; it dominates both Q5_K_M and Q8_0 on the
+two measured efficiency axes.
+
 ## Recommendation
 
 - Use Q4_K_M as the default for interactive, zero-shot local inference.

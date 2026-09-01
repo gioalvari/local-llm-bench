@@ -170,8 +170,42 @@ def test_generate_open_loop_report(tmp_path: Path) -> None:
     (tmp_path / "requests.jsonl").write_text("{}\n" * 24, encoding="utf-8")
     content = generate_report(tmp_path).read_text(encoding="utf-8")
     assert "Offered req/s" in content
+    assert "Realized req/s" in content
+    assert "fixed-spacing arrivals" in content
     assert "500.00 token/s" in content
     assert "95.0%" in content
+
+
+def test_generate_poisson_open_loop_report(tmp_path: Path) -> None:
+    manifest = {
+        "run_id": "poisson-run",
+        "run_type": "open-loop-load",
+        "arrival_process": "poisson",
+        "summary": [
+            {
+                "offered_requests_per_second": 8.0,
+                "realized_offered_requests_per_second": 7.5,
+                "requests": 15,
+                "achieved_requests_per_second": 7.2,
+                "aggregate_output_tokens_per_second": 450.0,
+                "goodput_requests_per_second": 6.0,
+                "slo_attainment_rate": 0.8,
+                "error_rate": 0.0,
+                "median_ttft_ms": 20.0,
+                "p95_ttft_ms": 40.0,
+                "median_e2e_ms": 300.0,
+                "p95_e2e_ms": 450.0,
+                "p95_client_schedule_delay_ms": 0.5,
+                "max_client_in_flight": 4,
+                "peak_process_tree_rss_bytes": 1024**3,
+            }
+        ],
+    }
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (tmp_path / "requests.jsonl").write_text("{}\n" * 15, encoding="utf-8")
+    content = generate_report(tmp_path).read_text(encoding="utf-8")
+    assert "Seeded Poisson arrivals" in content
+    assert "7.50" in content
 
 
 def test_generate_context_report(tmp_path: Path) -> None:
