@@ -12,6 +12,9 @@ def _write_variant(
     *,
     dataset_hash: str = "data",
     architecture: str = "arm64",
+    zero_shot_accuracy: float = 0.75,
+    quality_per_second: float = 3.0,
+    peak_rss_bytes: int = 1024**3,
 ) -> VariantRuns:
     micro = root / "micro"
     serving = root / "serving"
@@ -78,7 +81,7 @@ def _write_variant(
         "run_type": "llama-server",
         "experiment": experiment,
         "capabilities": capabilities,
-        "peak_process_tree_rss_bytes": 1024**3,
+        "peak_process_tree_rss_bytes": peak_rss_bytes,
     }
     (serving / "manifest.json").write_text(
         json.dumps(serving_manifest), encoding="utf-8"
@@ -88,9 +91,9 @@ def _write_variant(
         encoding="utf-8",
     )
     arm = {
-        "answer_accuracy": 0.75,
+        "answer_accuracy": zero_shot_accuracy,
         "schema_valid_rate": 0.5,
-        "quality_adjusted_answers_per_second": 3.0,
+        "quality_adjusted_answers_per_second": quality_per_second,
     }
     quality_manifest = {
         "run_type": "quality-evaluation",
@@ -113,6 +116,50 @@ def test_summarize_variant(tmp_path: Path) -> None:
     assert summary.zero_shot_quality_per_gib == 0.75
 
 
+@pytest.mark.parametrize(
+    ("run_name", "field_path", "value", "message"),
+    [
+        ("serving", ("capabilities", "architecture"), "x86_64", "hardware"),
+        (
+            "quality",
+            ("experiment", "server", "context_size"),
+            4096,
+            "benchmark protocols",
+        ),
+        (
+            "quality",
+            ("capabilities", "llama_server", "sha256"),
+            "other-server",
+            "llama-server binaries",
+        ),
+    ],
+)
+def test_summarize_variant_rejects_mismatched_run_trio(
+    tmp_path: Path,
+    run_name: str,
+    field_path: tuple[str, ...],
+    value: object,
+    message: str,
+) -> None:
+    runs = _write_variant(tmp_path, "Q4_K_M")
+    run_dir = getattr(runs, run_name)
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    target = manifest
+    for field in field_path[:-1]:
+        target = target[field]
+    target[field_path[-1]] = value
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        summarize_variant(runs)
+
+
+def test_summarize_variant_rejects_missing_rss(tmp_path: Path) -> None:
+    runs = _write_variant(tmp_path, "Q4_K_M", peak_rss_bytes=0)
+    with pytest.raises(ValueError, match="positive peak process RSS"):
+        summarize_variant(runs)
+
+
 def test_compare_variants_writes_aggregate_artifacts(tmp_path: Path) -> None:
     variants = [
         _write_variant(tmp_path / "q4", "Q4_K_M"),
@@ -120,8 +167,12 @@ def test_compare_variants_writes_aggregate_artifacts(tmp_path: Path) -> None:
     ]
     result = compare_variants(variants, tmp_path / "comparison")
     assert len(result.variants) == 2
+    assert len(result.quality_pareto_frontier) == 2
     assert (result.output_dir / "comparison.json").is_file()
-    assert "Q8_0" in (result.output_dir / "comparison.html").read_text(encoding="utf-8")
+    assert (result.output_dir / "quality-pareto.json").is_file()
+    html = (result.output_dir / "comparison.html").read_text(encoding="utf-8")
+    assert "Q8_0" in html
+    assert "quality-efficiency Pareto frontier" in html
 
 
 def test_compare_variants_supports_three_quantizations(tmp_path: Path) -> None:
@@ -134,6 +185,52 @@ def test_compare_variants_supports_three_quantizations(tmp_path: Path) -> None:
     assert [variant.quantization for variant in result.variants] == [
         "Q4_K_M",
         "Q5_K_M",
+        "Q8_0",
+    ]
+
+
+def test_quality_pareto_frontier_removes_dominated_variants(tmp_path: Path) -> None:
+    variants = [
+        _write_variant(
+            tmp_path / "q4",
+            "Q4_K_M",
+            zero_shot_accuracy=0.9,
+            quality_per_second=3.0,
+            peak_rss_bytes=2 * 1024**3,
+        ),
+        _write_variant(
+            tmp_path / "q5",
+            "Q5_K_M",
+            zero_shot_accuracy=0.8,
+            quality_per_second=2.5,
+        ),
+        _write_variant(
+            tmp_path / "q8",
+            "Q8_0",
+            zero_shot_accuracy=0.6,
+            quality_per_second=2.0,
+            peak_rss_bytes=2 * 1024**3,
+        ),
+    ]
+    result = compare_variants(variants, tmp_path / "comparison")
+    assert [point.quantization for point in result.quality_pareto_frontier] == [
+        "Q4_K_M",
+        "Q5_K_M",
+    ]
+    artifact = json.loads(
+        (result.output_dir / "quality-pareto.json").read_text(encoding="utf-8")
+    )
+    assert [point["quantization"] for point in artifact] == ["Q4_K_M", "Q5_K_M"]
+
+
+def test_quality_pareto_frontier_keeps_exact_ties(tmp_path: Path) -> None:
+    variants = [
+        _write_variant(tmp_path / "q4", "Q4_K_M"),
+        _write_variant(tmp_path / "q8", "Q8_0"),
+    ]
+    result = compare_variants(variants, tmp_path / "comparison")
+    assert [point.quantization for point in result.quality_pareto_frontier] == [
+        "Q4_K_M",
         "Q8_0",
     ]
 
