@@ -47,7 +47,9 @@ Sources:
 - https://www.eia.gov/energyexplained/electricity/energy-storage-for-electricity-generation.php
 
 `load/energy-prompts.jsonl` is a deterministic rotating prompt corpus for load
-generation. It contains no expected answers and is not part of quality scoring.
+generation. Prompt order remains round-robin for both fixed-spacing and seeded
+Poisson arrival schedules. It contains no expected answers and is not part of
+quality scoring.
 
 `context/energy-market.txt` is a short public repository-owned text seed. The
 context runner tokenizes it with the loaded model and cycles the resulting token

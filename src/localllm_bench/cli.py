@@ -16,6 +16,10 @@ from localllm_bench.load import run_load_benchmark
 from localllm_bench.mlx_comparison import compare_mlx_evaluations
 from localllm_bench.mlx_evaluation import evaluate_mlx_model
 from localllm_bench.open_loop import run_open_loop_benchmark
+from localllm_bench.open_loop_study import (
+    analyze_open_loop_runs,
+    run_repeated_open_loop_benchmark,
+)
 from localllm_bench.planner import expand_plan
 from localllm_bench.reporting import generate_report
 from localllm_bench.rescore import rescore_run
@@ -132,8 +136,36 @@ def load(
 def open_loop(
     config: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
 ) -> None:
-    """Run deterministic fixed-rate open-loop request traffic."""
-    result = run_open_loop_benchmark(load_experiment(config))
+    """Run configured reproducible open-loop request traffic."""
+    experiment = load_experiment(config)
+    if experiment.open_loop is not None and experiment.open_loop.independent_runs > 1:
+        result = run_repeated_open_loop_benchmark(experiment)
+        typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
+        return
+    single_result = run_open_loop_benchmark(experiment)
+    typer.echo(
+        json.dumps(single_result.model_dump(mode="json"), indent=2, sort_keys=True)
+    )
+
+
+@app.command("analyze-open-loop")
+def analyze_open_loop(
+    run_dir: Annotated[
+        list[Path], typer.Option("--run-dir", exists=True, file_okay=False)
+    ],
+    output_dir: Annotated[Path, typer.Option("--output-dir")],
+    bootstrap_iterations: Annotated[
+        int, typer.Option("--bootstrap-iterations", min=1)
+    ] = 10_000,
+    bootstrap_seed: Annotated[int, typer.Option("--bootstrap-seed", min=0)] = 42,
+) -> None:
+    """Analyze independent completed open-loop runs without inference."""
+    result = analyze_open_loop_runs(
+        run_dir,
+        output_dir,
+        bootstrap_iterations=bootstrap_iterations,
+        bootstrap_seed=bootstrap_seed,
+    )
     typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
 
 

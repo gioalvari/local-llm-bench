@@ -21,6 +21,10 @@ def _format_rate(value: object) -> str:
     return f"{float(value):.2f}" if isinstance(value, int | float) else "n/a"
 
 
+def _format_percent(value: object) -> str:
+    return f"{float(value):.1%}" if isinstance(value, int | float) else "n/a"
+
+
 def _format_gib(value: object) -> str:
     return f"{int(value) / (1024**3):.3f}" if isinstance(value, int | float) else "n/a"
 
@@ -262,17 +266,18 @@ def _generate_open_loop_report(
     for level in summary:
         values = [
             f"{float(level['offered_requests_per_second']):.2f}",
+            _format_rate(level.get("realized_offered_requests_per_second")),
             level.get("requests"),
             f"{float(level['achieved_requests_per_second']):.2f}",
             f"{float(level['aggregate_output_tokens_per_second']):.2f}",
             f"{float(level['goodput_requests_per_second']):.2f}",
-            f"{float(level['slo_attainment_rate']):.1%}",
-            f"{float(level['error_rate']):.1%}",
-            f"{float(level['median_ttft_ms']):.2f}",
-            f"{float(level['p95_ttft_ms']):.2f}",
-            f"{float(level['median_e2e_ms']):.2f}",
-            f"{float(level['p95_e2e_ms']):.2f}",
-            f"{float(level['p95_client_schedule_delay_ms']):.2f}",
+            _format_percent(level.get("slo_attainment_rate")),
+            _format_percent(level.get("error_rate")),
+            _format_rate(level.get("median_ttft_ms")),
+            _format_rate(level.get("p95_ttft_ms")),
+            _format_rate(level.get("median_e2e_ms")),
+            _format_rate(level.get("p95_e2e_ms")),
+            _format_rate(level.get("p95_client_schedule_delay_ms")),
             level.get("max_client_in_flight"),
             _format_gib(level.get("peak_process_tree_rss_bytes")),
         ]
@@ -293,12 +298,23 @@ def _generate_open_loop_report(
             f"{_format_gib(manifest.get('peak_process_tree_rss_bytes'))} GiB",
         ),
     ]
+    arrival_process = str(manifest.get("arrival_process", "fixed"))
+    if arrival_process == "poisson":
+        arrival_description = (
+            "Seeded Poisson arrivals; exact precomputed offsets, warm-up, and model "
+            "load are excluded."
+        )
+    else:
+        arrival_description = (
+            "Deterministic fixed-spacing arrivals; warm-up and model load are excluded."
+        )
     return f"""
   <p class="meta">Requests: {len(records)} | failures: {failed_requests}</p>
   <div class="metrics">{"".join(cards)}</div>
-  <p>Deterministic fixed-rate arrivals; warm-up and model load are excluded.</p>
+  <p>{arrival_description}</p>
   <div class="panel"><table>
-    <thead><tr><th>Offered req/s</th><th>Requests</th><th>Achieved req/s</th>
+    <thead><tr><th>Offered req/s</th><th>Realized req/s</th><th>Requests</th>
+    <th>Achieved req/s</th>
     <th>Output token/s</th><th>Goodput req/s</th><th>SLO attainment</th>
     <th>Error rate</th><th>Median TTFT ms</th><th>P95 TTFT ms</th>
     <th>Median E2E ms</th><th>P95 E2E ms</th><th>P95 schedule delay ms</th>

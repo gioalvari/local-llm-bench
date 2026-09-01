@@ -1,10 +1,13 @@
 """End-to-end streaming benchmarks for llama.cpp server."""
 
 import json
+import os
+import signal
 import socket
 import subprocess
 import time
 import uuid
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -280,8 +283,47 @@ def stream_completion(
     )
 
 
-def stop_server(process: subprocess.Popen[str]) -> None:
+def stop_server(
+    process: subprocess.Popen[str],
+    *,
+    process_group: bool = False,
+    timeout_seconds: float = 10,
+) -> None:
     """Terminate a managed server, escalating when needed."""
+    if process_group and hasattr(os, "killpg"):
+        process_group_id = process.pid
+
+        def group_members() -> list[psutil.Process]:
+            members: list[psutil.Process] = []
+            for candidate in psutil.process_iter(["pid"]):
+                try:
+                    if os.getpgid(candidate.pid) == process_group_id:
+                        members.append(candidate)
+                except (ProcessLookupError, PermissionError, psutil.NoSuchProcess):
+                    continue
+            return members
+
+        try:
+            os.killpg(process_group_id, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        with suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=timeout_seconds)
+        deadline = time.monotonic() + timeout_seconds
+        members = group_members()
+        while members and time.monotonic() < deadline:
+            time.sleep(0.01)
+            members = group_members()
+        if members:
+            with suppress(ProcessLookupError):
+                os.killpg(process_group_id, signal.SIGKILL)
+            for member in members:
+                with suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+                    member.kill()
+            psutil.wait_procs(members, timeout=timeout_seconds)
+        if process.poll() is None:
+            process.wait(timeout=timeout_seconds)
+        return
     if process.poll() is not None:
         return
     process.terminate()
@@ -313,7 +355,11 @@ def run_server_benchmark(experiment: ExperimentSpec) -> ServerRunResult:
         "run_type": "llama-server",
         "experiment": experiment.model_dump(mode="json"),
         "command": command,
-        "capabilities": inspect_capabilities(run_dir).model_dump(mode="json"),
+        "capabilities": inspect_capabilities(
+            run_dir,
+            llama_bench_binary=experiment.llama_bench_binary,
+            llama_server_binary=experiment.llama_server_binary,
+        ).model_dump(mode="json"),
     }
     (run_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"

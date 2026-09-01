@@ -170,7 +170,11 @@ def run_load_benchmark(experiment: ExperimentSpec) -> LoadRunResult:
         "effective_server": runtime_server.model_dump(mode="json"),
         "context_tokens_per_slot": experiment.server.context_size,
         "command": command,
-        "capabilities": inspect_capabilities(run_dir).model_dump(mode="json"),
+        "capabilities": inspect_capabilities(
+            run_dir,
+            llama_bench_binary=experiment.llama_bench_binary,
+            llama_server_binary=experiment.llama_server_binary,
+        ).model_dump(mode="json"),
     }
     manifest_path = run_dir / "manifest.json"
     _write_json(manifest_path, manifest)
