@@ -154,6 +154,7 @@ def _read_stream(response: BinaryIO, request_started_ns: int) -> dict[str, Any]:
         "event_offsets_ns": event_offsets_ns,
         "backend_timings": timings if isinstance(timings, dict) else {},
         "event_count": len(events),
+        "content_chunk_count": len(content_parts),
     }
 
 
