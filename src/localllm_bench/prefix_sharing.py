@@ -59,6 +59,7 @@ class PrefixSharingWorkload(BaseModel):
     repetitions: PositiveInt
     corpus_path: Path
     prompts_path: Path
+    agent_id_header: str | None = None
 
     @model_validator(mode="after")
     def validate_concurrency(self) -> "PrefixSharingWorkload":
@@ -226,8 +227,14 @@ def _chat_completion(
     target_name: str,
     messages: list[dict[str, str]],
     config: PrefixSharingConfig,
+    agent: int | None = None,
 ) -> dict[str, Any]:
-    """Send one generic OpenAI-compatible streaming chat request."""
+    """Send one generic OpenAI-compatible streaming chat request.
+
+    When ``workload.agent_id_header`` is set and ``agent`` is given, the request
+    carries that header with value ``agent-<agent>`` (e.g. ``X-Agent-Id`` for
+    per-agent memory namespaces in a memory proxy).
+    """
     payload = {
         "model": target_name,
         "messages": messages,
@@ -239,7 +246,7 @@ def _chat_completion(
     request = Request(
         f"{base_url}{CHAT_COMPLETIONS_PATH}",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=_request_headers(config.workload.agent_id_header, agent),
         method="POST",
     )
     started_ns = time.monotonic_ns()
@@ -249,6 +256,14 @@ def _chat_completion(
         measurement["output_tokens"] = int(measurement["content_chunk_count"])
     validate_completion(str(measurement.get("response_text", "")))
     return measurement
+
+
+def _request_headers(agent_id_header: str | None, agent: int | None) -> dict[str, str]:
+    """Build request headers, optionally identifying the calling agent."""
+    headers = {"Content-Type": "application/json"}
+    if agent_id_header is not None and agent is not None:
+        headers[agent_id_header] = f"agent-{agent}"
+    return headers
 
 
 def validate_completion(text: str) -> None:
@@ -391,7 +406,7 @@ def _run_repetition(
                     }
                     try:
                         measurement = _chat_completion(
-                            base_url, target.name, messages, config
+                            base_url, target.name, messages, config, agent
                         )
                         record.update(measurement)
                     except (HTTPError, OSError, TimeoutError, ValueError) as error:

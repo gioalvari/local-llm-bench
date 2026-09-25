@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from localllm_bench.prefix_sharing import (
     PrefixSharingConfig,
+    _request_headers,
     load_prefix_sharing_config,
     phase_for_request,
     prepare_workload,
@@ -285,3 +286,9 @@ def test_validate_completion_rejects_failures(text: str) -> None:
 
 def test_validate_completion_accepts_normal_text() -> None:
     validate_completion("Prices rose because of [demand].")
+
+
+def test_request_headers_include_agent_id_when_configured() -> None:
+    assert _request_headers(None, 3) == {"Content-Type": "application/json"}
+    assert _request_headers("X-Agent-Id", None) == {"Content-Type": "application/json"}
+    assert _request_headers("X-Agent-Id", 3)["X-Agent-Id"] == "agent-3"
