@@ -73,12 +73,48 @@ identical.
   common prefix of each agent's slot, and at concurrency 8 its TTFT is
   dominated by queueing; the two modes are within noise.
 
+## Follow-up: sticky injection
+
+`--inject-mode sticky` re-injects, byte for byte, the blocks the proxy added to earlier
+user turns (clients resend history without them), excludes memories already shown, and
+formats the new block deterministically (absolute dates instead of "5m ago"). The
+prompt of turn *t* is then an exact extension of turn *t−1*.
+
+The full 7-target run was invalidated halfway through: the machine switched to battery
+and every later target slowed down (including `suffix`, from 6.8 s to 16.1 s per
+repetition). The comparison below is from three separate runs with the RadixForge
+targets in rotated order, one repetition each (544 requests, 0 failures; one proxy
+start failed on a port already in use, which the proxy now reports and exits non-zero):
+
+| Concurrency | Metric (follow-up turns) | system | suffix | sticky |
+| ---: | --- | ---: | ---: | ---: |
+| 1 | TTFT p50 | 67.5 ms | 62.7 ms | **47.9 ms** |
+| 1 | TTFT p95 | 98.8 ms | 83.5 ms | **52.4 ms** |
+| 8 | TTFT p50 | 288.1 ms | **249.0 ms** | 256.5 ms |
+| 8 | TTFT p95 | 509.4 ms | 435.7 ms | **287.2 ms** |
+| 8 | E2E p50 | 1,008 ms | 945 ms | **858 ms** |
+
+Tokens prefilled per request (median, concurrency 8):
+
+| Turn | system | suffix | sticky |
+| ---: | ---: | ---: | ---: |
+| 1 | 107 | 82 | 90 |
+| 2 | 200 | 156 | 133 |
+| 3 | 296 | 231 | **149** |
+
+With sticky, prefill no longer grows with the conversation. Median TTFT at
+concurrency 8 is on par with suffix, but the tail drops by a third and end-to-end
+latency is 9% lower. The new block per turn (~95 tokens over the 54 without memory)
+is what remains.
+
+These are battery-powered numbers and differ from the mains-powered runs above by up
+to ~10%; compare the three modes with each other, not with the earlier table.
+
 ## Implications for agent-memory-layer
 
-- Use `--inject-mode suffix` in front of a prefix-caching backend.
-- Next gains come from making the injected block cacheable: stable ordering,
-  reusing the previous turn's block when retrievals do not change, or placing
-  long-lived memories in a stable block and only new ones near the question.
+- Use `--inject-mode sticky` in front of a prefix-caching backend.
+- Remaining gains: a smaller per-turn block (fewer, shorter memories) and keeping the
+  sticky cache across proxy restarts.
 
 ## Limitations
 

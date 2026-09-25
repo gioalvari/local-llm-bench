@@ -1,5 +1,6 @@
 # Memory proxy (agent-memory-layer) in front of RadixForge / llama-server:
-# memories injected into the system prompt vs. into the last user turn.
+# memories injected into the system prompt vs. into the last user turn (suffix)
+# vs. sticky (earlier blocks re-injected, prompt is an exact extension).
 # Requires scripts/stack.sh from github.com/gioalvari/agent-memory-layer.
 name: memory-injection-qwen-0.5b-q4
 seed: 20260925
@@ -107,6 +108,51 @@ targets:
   - /Users/a470718/Project/personal/agent-memory-layer/scripts/stack.sh
   - '{port}'
   - suffix
+  - /Users/a470718/.ollama/models/blobs/sha256-970aa74c0a90ef7482477cf803618e776e173c007bf957f635f1015bfcfef0e6
+  - --
+  - llama-server
+  - -m
+  - '{model}'
+  - --host
+  - 127.0.0.1
+  - --port
+  - '{bport}'
+  - --ctx-size
+  - '32768'
+  - --parallel
+  - '8'
+  - --n-gpu-layers
+  - '99'
+  - --no-webui
+  - --cache-reuse
+  - '256'
+  startup_timeout_seconds: 180
+- name: radixforge-memory-sticky
+  command:
+  - /Users/a470718/Project/personal/agent-memory-layer/scripts/stack.sh
+  - '{port}'
+  - sticky
+  - /Users/a470718/.ollama/models/blobs/sha256-970aa74c0a90ef7482477cf803618e776e173c007bf957f635f1015bfcfef0e6
+  - --
+  - /Users/a470718/Project/personal/radixforge/build/radixforge
+  - -m
+  - '{model}'
+  - --host
+  - 127.0.0.1
+  - --port
+  - '{bport}'
+  - --ctx-size
+  - '32768'
+  - --max-seq
+  - '32'
+  - -ngl
+  - '99'
+  startup_timeout_seconds: 180
+- name: llama-server-memory-sticky
+  command:
+  - /Users/a470718/Project/personal/agent-memory-layer/scripts/stack.sh
+  - '{port}'
+  - sticky
   - /Users/a470718/.ollama/models/blobs/sha256-970aa74c0a90ef7482477cf803618e776e173c007bf957f635f1015bfcfef0e6
   - --
   - llama-server
