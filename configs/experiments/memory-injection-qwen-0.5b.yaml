@@ -1,0 +1,128 @@
+# Memory proxy (agent-memory-layer) in front of RadixForge / llama-server:
+# memories injected into the system prompt vs. into the last user turn.
+# Requires scripts/stack.sh from github.com/gioalvari/agent-memory-layer.
+name: memory-injection-qwen-0.5b-q4
+seed: 20260925
+output_dir: runs
+model_path: /Users/a470718/local-llm-bench/models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
+workload:
+  agents: 8
+  shared_prefix_words: 1200
+  turns: 4
+  max_tokens: 32
+  temperature: 0.0
+  concurrency:
+  - 1
+  - 8
+  repetitions: 3
+  corpus_path: ../../datasets/context/energy-market.txt
+  prompts_path: ../../datasets/load/energy-prompts.jsonl
+  agent_id_header: X-Agent-Id
+targets:
+- name: radixforge-no-memory
+  command:
+  - /Users/a470718/Project/personal/radixforge/build/radixforge
+  - -m
+  - '{model}'
+  - --host
+  - 127.0.0.1
+  - --port
+  - '{port}'
+  - --ctx-size
+  - '32768'
+  - --max-seq
+  - '32'
+  - -ngl
+  - '99'
+  startup_timeout_seconds: 120
+- name: radixforge-memory-system
+  command:
+  - /Users/a470718/Project/personal/agent-memory-layer/scripts/stack.sh
+  - '{port}'
+  - system
+  - /Users/a470718/.ollama/models/blobs/sha256-970aa74c0a90ef7482477cf803618e776e173c007bf957f635f1015bfcfef0e6
+  - --
+  - /Users/a470718/Project/personal/radixforge/build/radixforge
+  - -m
+  - '{model}'
+  - --host
+  - 127.0.0.1
+  - --port
+  - '{bport}'
+  - --ctx-size
+  - '32768'
+  - --max-seq
+  - '32'
+  - -ngl
+  - '99'
+  startup_timeout_seconds: 180
+  baseline: true
+- name: radixforge-memory-suffix
+  command:
+  - /Users/a470718/Project/personal/agent-memory-layer/scripts/stack.sh
+  - '{port}'
+  - suffix
+  - /Users/a470718/.ollama/models/blobs/sha256-970aa74c0a90ef7482477cf803618e776e173c007bf957f635f1015bfcfef0e6
+  - --
+  - /Users/a470718/Project/personal/radixforge/build/radixforge
+  - -m
+  - '{model}'
+  - --host
+  - 127.0.0.1
+  - --port
+  - '{bport}'
+  - --ctx-size
+  - '32768'
+  - --max-seq
+  - '32'
+  - -ngl
+  - '99'
+  startup_timeout_seconds: 180
+- name: llama-server-memory-system
+  command:
+  - /Users/a470718/Project/personal/agent-memory-layer/scripts/stack.sh
+  - '{port}'
+  - system
+  - /Users/a470718/.ollama/models/blobs/sha256-970aa74c0a90ef7482477cf803618e776e173c007bf957f635f1015bfcfef0e6
+  - --
+  - llama-server
+  - -m
+  - '{model}'
+  - --host
+  - 127.0.0.1
+  - --port
+  - '{bport}'
+  - --ctx-size
+  - '32768'
+  - --parallel
+  - '8'
+  - --n-gpu-layers
+  - '99'
+  - --no-webui
+  - --cache-reuse
+  - '256'
+  startup_timeout_seconds: 180
+- name: llama-server-memory-suffix
+  command:
+  - /Users/a470718/Project/personal/agent-memory-layer/scripts/stack.sh
+  - '{port}'
+  - suffix
+  - /Users/a470718/.ollama/models/blobs/sha256-970aa74c0a90ef7482477cf803618e776e173c007bf957f635f1015bfcfef0e6
+  - --
+  - llama-server
+  - -m
+  - '{model}'
+  - --host
+  - 127.0.0.1
+  - --port
+  - '{bport}'
+  - --ctx-size
+  - '32768'
+  - --parallel
+  - '8'
+  - --n-gpu-layers
+  - '99'
+  - --no-webui
+  - --cache-reuse
+  - '256'
+  startup_timeout_seconds: 180

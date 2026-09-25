@@ -21,6 +21,7 @@ from localllm_bench.open_loop_study import (
     run_repeated_open_loop_benchmark,
 )
 from localllm_bench.planner import expand_plan
+from localllm_bench.prefix_sharing import load_prefix_sharing_config, run_prefix_sharing
 from localllm_bench.reporting import generate_report
 from localllm_bench.rescore import rescore_run
 from localllm_bench.runner import run_experiment
@@ -175,6 +176,15 @@ def context_sweep(
 ) -> None:
     """Measure exact prompt lengths across configured context windows."""
     result = run_context_sweep(load_experiment(config))
+    typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
+
+
+@app.command("prefix-sharing")
+def prefix_sharing(
+    config: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+) -> None:
+    """Run the server-agnostic multi-agent prefix-sharing benchmark."""
+    result = run_prefix_sharing(load_prefix_sharing_config(config))
     typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
 
 

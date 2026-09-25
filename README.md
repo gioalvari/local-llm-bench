@@ -229,6 +229,23 @@ TTFT/end-to-end latency, decode rate, and memory. The configured sweep separates
 window-size effects at a fixed prompt length from prompt-length effects at a
 fixed context window.
 
+## Prefix-sharing (multi-agent) benchmark
+
+Compare OpenAI-compatible local servers on multi-turn agent conversations that
+share a long common system-prompt prefix while retaining agent-specific suffixes.
+Each target starts from a fresh server cache for every repetition; requests stream
+through `/v1/chat/completions`, and the run records TTFT, end-to-end latency,
+wall-clock throughput, and backend cache telemetry where available.
+
+```bash
+uv run llmb prefix-sharing configs/experiments/prefix-sharing-qwen-0.5b.yaml
+```
+
+The YAML configuration defines the model, corpus and prompt datasets, targets,
+and workload. Commands accept `{model}` and `{port}` placeholders. Artifacts
+include `manifest.json`, `requests.jsonl`, `repetitions.jsonl`, `summary.json`,
+`report.md`, server logs, and optional `stats.jsonl` snapshots.
+
 Analyze the paired effects in a completed two-level microbenchmark matrix:
 
 ```bash
