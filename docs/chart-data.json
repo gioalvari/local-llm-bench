@@ -1,0 +1,26 @@
+{
+  "context": {
+    "prompt_lengths": [128, 512, 1024, 2048],
+    "ttft_ms": [24.29, 92.81, 187.65, 394.87],
+    "window_rss_mib": [495.3, 502.5, 516.2, 540.4],
+    "window_sizes": [256, 1024, 2048, 4096]
+  },
+  "open_loop": {
+    "achieved_rps": [2.0, 4.0, 7.42, 7.82],
+    "goodput_rps": [2.0, 4.0, 4.02, 0.22],
+    "offered_rps": [2, 4, 8, 12],
+    "slo_attainment_percent": [100.0, 100.0, 54.2, 2.8]
+  },
+  "quantization": {
+    "engineered_schema_percent": [41.7, 83.3, 58.3],
+    "generation_tokens_per_second": [284.49, 253.12, 254.31],
+    "labels": ["Q4_K_M", "Q5_K_M", "Q8_0"],
+    "peak_rss_mib": [510.2, 533.2, 641.1],
+    "zero_shot_accuracy_percent": [91.7, 83.3, 83.3]
+  },
+  "sources": [
+    "results/qwen-0.5b-q4-q5-q8-m4-pro.md",
+    "results/qwen-0.5b-q4-open-loop-m4-pro.md",
+    "results/qwen-0.5b-q4-context-m4-pro.md"
+  ]
+}
