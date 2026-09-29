@@ -5,6 +5,8 @@ model configuration for a hardware budget. It keeps model quality, inference
 speed, and memory consumption in the same experiment rather than treating
 quantization as a speed-only decision.
 
+![Experiment lifecycle from YAML specification to analysis](docs/images/architecture.svg)
+
 The first release targets Apple Silicon with `llama.cpp`. It provides a small,
 storage-conscious vertical slice before expanding to streaming serving,
 Transformers/MPS, MLX fine-tuning, and a sealed energy-market QA benchmark.
@@ -359,6 +361,17 @@ The `llama-bench` executable has no version flag. Its SHA-256 is captured by
 Remote model configurations pin the exact GGUF filename instead of relying on
 the backend's quantization-name discovery.
 
+### Measured results (Qwen2.5 0.5B, M4 Pro)
+
+![Q4, Q5 and Q8 speed, memory and quality tradeoffs](docs/images/quantization-tradeoffs.svg)
+
+![Open-loop throughput, goodput and SLO attainment](docs/images/open-loop-capacity.svg)
+
+![Time to first token and RSS versus context](docs/images/context-effects.svg)
+
+The charts are generated from `docs/chart-data.json`, which cites its source
+reports under `results/`. Regenerate them deterministically with `make charts`.
+
 ## Fine-tuning track
 
 The intended training experiment uses MLX-LM LoRA on a narrow, public-source
@@ -419,6 +432,7 @@ uv run llmb compare-mlx \
 ```bash
 make check
 make full
+make charts
 ```
 
 Hardware integration tests are kept separate from unit tests. No model weights,

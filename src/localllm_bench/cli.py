@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 
+from localllm_bench.charts import generate_charts
 from localllm_bench.comparison import VariantRuns, compare_variants
 from localllm_bench.config import load_experiment
 from localllm_bench.context_sweep import run_context_sweep
@@ -250,3 +251,13 @@ def compare_mlx(
     """Compare frozen base and adapted MLX evaluation artifacts."""
     result = compare_mlx_evaluations(base_dir, adapted_dir, output_dir)
     typer.echo(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
+
+
+@app.command("charts")
+def charts(
+    data: Annotated[Path, typer.Option("--data")] = Path("docs/chart-data.json"),
+    output_dir: Annotated[Path, typer.Option("--output-dir")] = Path("docs/images"),
+) -> None:
+    """Regenerate deterministic SVG documentation charts."""
+    paths = generate_charts(data, output_dir)
+    typer.echo(json.dumps([str(path) for path in paths], indent=2))

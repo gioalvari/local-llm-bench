@@ -1,10 +1,13 @@
-.PHONY: install check test full
+.PHONY: install install-mlx charts check test full
 
 install:
 	uv sync --extra dev
 
 install-mlx:
 	uv sync --extra dev --extra mlx
+
+charts:
+	uv run llmb charts
 
 check:
 	uv run ruff format --check .

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1170" height="350" viewBox="0 0 1170 350" role="img" aria-labelledby="title desc">
+<title id="title">LocalLLM Bench experiment lifecycle</title>
+<desc id="desc">A reproducible pipeline from pinned YAML configuration through host probing, isolated runners, raw artifacts, and quality-aware analysis.</desc>
+<rect width="1170" height="350" rx="18" fill="#0d1117"/>
+<style>text{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;fill:#e6edf3}.muted{fill:#8b949e}.label{font-size:13px}.small{font-size:11px}.title{font-size:24px;font-weight:700}.value{font-size:15px;font-weight:700}</style>
+<text x="50" y="52" class="title">One experiment, three objective axes</text>
+<text x="50" y="80" class="muted label">Same checkpoint. Same hardware. Measured speed, memory, and quality.</text>
+<rect x="50" y="125" width="170" height="74" rx="12" fill="#161b22" stroke="#9be15d" stroke-width="2"/>
+<text x="66" y="155" class="value">Experiment YAML</text>
+<text x="66" y="179" class="muted small">Pinned matrix + hashes</text>
+<path d="M 228 162.0 H 263" stroke="#30363d" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="275" y="125" width="170" height="74" rx="12" fill="#161b22" stroke="#56d4dd" stroke-width="2"/>
+<text x="291" y="155" class="value">Capability probe</text>
+<text x="291" y="179" class="muted small">Host + binary digests</text>
+<path d="M 453 162.0 H 488" stroke="#30363d" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="500" y="125" width="170" height="74" rx="12" fill="#161b22" stroke="#f0b35a" stroke-width="2"/>
+<text x="516" y="155" class="value">Isolated runners</text>
+<text x="516" y="179" class="muted small">llama.cpp / MLX</text>
+<path d="M 678 162.0 H 713" stroke="#30363d" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="725" y="125" width="170" height="74" rx="12" fill="#161b22" stroke="#e782a9" stroke-width="2"/>
+<text x="741" y="155" class="value">Raw artifacts</text>
+<text x="741" y="179" class="muted small">JSONL + telemetry</text>
+<path d="M 903 162.0 H 938" stroke="#30363d" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="950" y="125" width="170" height="74" rx="12" fill="#161b22" stroke="#9be15d" stroke-width="2"/>
+<text x="966" y="155" class="value">Analysis</text>
+<text x="966" y="179" class="muted small">Quality + Pareto</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e"/></marker></defs>
+<rect x="160" y="245" width="250" height="58" rx="12" fill="#161b22" stroke="#56d4dd"/>
+<text x="180" y="271" class="value">Performance</text><text x="180" y="291" class="muted small">TTFT · token/s · throughput</text>
+<rect x="465" y="245" width="250" height="58" rx="12" fill="#161b22" stroke="#f0b35a"/>
+<text x="485" y="271" class="value">Memory</text><text x="485" y="291" class="muted small">RSS · host memory · model size</text>
+<rect x="770" y="245" width="250" height="58" rx="12" fill="#161b22" stroke="#e782a9"/>
+<text x="790" y="271" class="value">Quality</text><text x="790" y="291" class="muted small">Exact match · F1 · schema</text></svg>

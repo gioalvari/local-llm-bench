@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1170" height="430" viewBox="0 0 1170 430" role="img" aria-labelledby="title desc">
+<title id="title">Q4, Q5, and Q8 quantization tradeoffs</title>
+<desc id="desc">Three grouped horizontal bar charts compare peak serving RSS, generation throughput, and engineered JSON schema validity.</desc>
+<rect width="1170" height="430" rx="18" fill="#0d1117"/>
+<style>text{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;fill:#e6edf3}.muted{fill:#8b949e}.label{font-size:13px}.small{font-size:11px}.title{font-size:24px;font-weight:700}.value{font-size:15px;font-weight:700}</style>
+<text x="45" y="48" class="title">Quantization is a three-way tradeoff</text>
+<text x="45" y="74" class="muted label">Lower memory, faster decode, or stronger structured output: no variant wins every axis.</text>
+<rect x="45" y="105" width="330" height="285" rx="14" fill="#161b22"/>
+<text x="65" y="137" class="value">Peak serving RSS</text>
+<text x="65" y="158" class="muted small">MiB · lower is better</text>
+<text x="65" y="207" class="label">Q4_K_M</text>
+<rect x="145" y="190" width="205" height="22" rx="6" fill="#30363d"/>
+<rect x="145" y="190" width="145.66" height="22" rx="6" fill="#9be15d"/>
+<text x="350" y="207" text-anchor="end" class="small">510.2</text>
+<text x="65" y="269" class="label">Q5_K_M</text>
+<rect x="145" y="252" width="205" height="22" rx="6" fill="#30363d"/>
+<rect x="145" y="252" width="152.23" height="22" rx="6" fill="#56d4dd"/>
+<text x="350" y="269" text-anchor="end" class="small">533.2</text>
+<text x="65" y="331" class="label">Q8_0</text>
+<rect x="145" y="314" width="205" height="22" rx="6" fill="#30363d"/>
+<rect x="145" y="314" width="183.04" height="22" rx="6" fill="#f0b35a"/>
+<text x="350" y="331" text-anchor="end" class="small">641.1</text>
+<rect x="410" y="105" width="330" height="285" rx="14" fill="#161b22"/>
+<text x="430" y="137" class="value">Token generation</text>
+<text x="430" y="158" class="muted small">token/s · higher is better</text>
+<text x="430" y="207" class="label">Q4_K_M</text>
+<rect x="510" y="190" width="205" height="22" rx="6" fill="#30363d"/>
+<rect x="510" y="190" width="183.04" height="22" rx="6" fill="#9be15d"/>
+<text x="715" y="207" text-anchor="end" class="small">284.5</text>
+<text x="430" y="269" class="label">Q5_K_M</text>
+<rect x="510" y="252" width="205" height="22" rx="6" fill="#30363d"/>
+<rect x="510" y="252" width="162.85" height="22" rx="6" fill="#56d4dd"/>
+<text x="715" y="269" text-anchor="end" class="small">253.1</text>
+<text x="430" y="331" class="label">Q8_0</text>
+<rect x="510" y="314" width="205" height="22" rx="6" fill="#30363d"/>
+<rect x="510" y="314" width="163.62" height="22" rx="6" fill="#f0b35a"/>
+<text x="715" y="331" text-anchor="end" class="small">254.3</text>
+<rect x="775" y="105" width="330" height="285" rx="14" fill="#161b22"/>
+<text x="795" y="137" class="value">Engineered schema validity</text>
+<text x="795" y="158" class="muted small">% · higher is better</text>
+<text x="795" y="207" class="label">Q4_K_M</text>
+<rect x="875" y="190" width="205" height="22" rx="6" fill="#30363d"/>
+<rect x="875" y="190" width="85.48" height="22" rx="6" fill="#9be15d"/>
+<text x="1080" y="207" text-anchor="end" class="small">41.7%</text>
+<text x="795" y="269" class="label">Q5_K_M</text>
+<rect x="875" y="252" width="205" height="22" rx="6" fill="#30363d"/>
+<rect x="875" y="252" width="170.76" height="22" rx="6" fill="#56d4dd"/>
+<text x="1080" y="269" text-anchor="end" class="small">83.3%</text>
+<text x="795" y="331" class="label">Q8_0</text>
+<rect x="875" y="314" width="205" height="22" rx="6" fill="#30363d"/>
+<rect x="875" y="314" width="119.52" height="22" rx="6" fill="#f0b35a"/>
+<text x="1080" y="331" text-anchor="end" class="small">58.3%</text></svg>

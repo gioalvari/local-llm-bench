@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1170" height="470" viewBox="0 0 1170 470" role="img" aria-labelledby="title desc">
+<title id="title">Open-loop saturation and SLO goodput</title>
+<desc id="desc">Line chart of offered, achieved, and SLO-compliant request rates plus SLO attainment bars from 2 to 12 requests per second.</desc>
+<rect width="1170" height="470" rx="18" fill="#0d1117"/>
+<style>text{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;fill:#e6edf3}.muted{fill:#8b949e}.label{font-size:13px}.small{font-size:11px}.title{font-size:24px;font-weight:700}.value{font-size:15px;font-weight:700}</style>
+<text x="45" y="48" class="title">Usable capacity ends before raw throughput</text>
+<text x="45" y="74" class="muted label">At 8 offered req/s the server still works, but only 54.2% of requests meet the 500 ms SLO.</text>
+<line x1="80.0" y1="380.00" x2="800.0" y2="380.00" stroke="#30363d"/>
+<text x="68.0" y="384.00" text-anchor="end" class="muted small">0</text>
+<line x1="80.0" y1="313.75" x2="800.0" y2="313.75" stroke="#30363d"/>
+<text x="68.0" y="317.75" text-anchor="end" class="muted small">3</text>
+<line x1="80.0" y1="247.50" x2="800.0" y2="247.50" stroke="#30363d"/>
+<text x="68.0" y="251.50" text-anchor="end" class="muted small">6</text>
+<line x1="80.0" y1="181.25" x2="800.0" y2="181.25" stroke="#30363d"/>
+<text x="68.0" y="185.25" text-anchor="end" class="muted small">9</text>
+<line x1="80.0" y1="115.00" x2="800.0" y2="115.00" stroke="#30363d"/>
+<text x="68.0" y="119.00" text-anchor="end" class="muted small">12</text>
+<polyline points="80.00,335.83 320.00,291.67 560.00,203.33 800.00,115.00" fill="none" stroke="#8b949e" stroke-width="4" stroke-linejoin="round"/>
+<circle cx="80.00" cy="335.83" r="5" fill="#8b949e"/>
+<circle cx="320.00" cy="291.67" r="5" fill="#8b949e"/>
+<circle cx="560.00" cy="203.33" r="5" fill="#8b949e"/>
+<circle cx="800.00" cy="115.00" r="5" fill="#8b949e"/>
+<polyline points="80.00,335.83 320.00,291.67 560.00,216.14 800.00,207.31" fill="none" stroke="#56d4dd" stroke-width="4" stroke-linejoin="round"/>
+<circle cx="80.00" cy="335.83" r="5" fill="#56d4dd"/>
+<circle cx="320.00" cy="291.67" r="5" fill="#56d4dd"/>
+<circle cx="560.00" cy="216.14" r="5" fill="#56d4dd"/>
+<circle cx="800.00" cy="207.31" r="5" fill="#56d4dd"/>
+<polyline points="80.00,335.83 320.00,291.67 560.00,291.23 800.00,375.14" fill="none" stroke="#9be15d" stroke-width="4" stroke-linejoin="round"/>
+<circle cx="80.00" cy="335.83" r="5" fill="#9be15d"/>
+<circle cx="320.00" cy="291.67" r="5" fill="#9be15d"/>
+<circle cx="560.00" cy="291.23" r="5" fill="#9be15d"/>
+<circle cx="800.00" cy="375.14" r="5" fill="#9be15d"/>
+<text x="80.00" y="405" text-anchor="middle" class="small">2</text>
+<text x="320.00" y="405" text-anchor="middle" class="small">4</text>
+<text x="560.00" y="405" text-anchor="middle" class="small">8</text>
+<text x="800.00" y="405" text-anchor="middle" class="small">12</text>
+<line x1="95" y1="430" x2="123" y2="430" stroke="#8b949e" stroke-width="4"/><text x="131" y="434" class="small">Offered</text>
+<line x1="240" y1="430" x2="268" y2="430" stroke="#56d4dd" stroke-width="4"/><text x="276" y="434" class="small">Achieved</text>
+<line x1="385" y1="430" x2="413" y2="430" stroke="#9be15d" stroke-width="4"/><text x="421" y="434" class="small">SLO goodput</text>
+<rect x="850" y="115" width="270" height="265" rx="14" fill="#161b22"/>
+<text x="875" y="148" class="value">500 ms SLO attainment</text>
+<text x="875" y="194" class="small">2 req/s</text>
+<rect x="940" y="178" width="145" height="20" rx="5" fill="#30363d"/>
+<rect x="940" y="178" width="145.00" height="20" rx="5" fill="#9be15d"/>
+<text x="1095" y="193" class="small">100.0%</text>
+<text x="875" y="242" class="small">4 req/s</text>
+<rect x="940" y="226" width="145" height="20" rx="5" fill="#30363d"/>
+<rect x="940" y="226" width="145.00" height="20" rx="5" fill="#9be15d"/>
+<text x="1095" y="241" class="small">100.0%</text>
+<text x="875" y="290" class="small">8 req/s</text>
+<rect x="940" y="274" width="145" height="20" rx="5" fill="#30363d"/>
+<rect x="940" y="274" width="78.59" height="20" rx="5" fill="#e782a9"/>
+<text x="1095" y="289" class="small">54.2%</text>
+<text x="875" y="338" class="small">12 req/s</text>
+<rect x="940" y="322" width="145" height="20" rx="5" fill="#30363d"/>
+<rect x="940" y="322" width="4.06" height="20" rx="5" fill="#e782a9"/>
+<text x="1095" y="337" class="small">2.8%</text></svg>
