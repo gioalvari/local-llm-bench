@@ -207,7 +207,11 @@ def run_context_sweep(experiment: ExperimentSpec) -> ContextRunResult:
         "run_type": "context-sweep",
         "experiment": experiment.model_dump(mode="json"),
         "corpus_sha256": prompt_dataset_sha256(sweep.corpus),
-        "capabilities": inspect_capabilities(run_dir).model_dump(mode="json"),
+        "capabilities": inspect_capabilities(
+            run_dir,
+            llama_bench_binary=experiment.llama_bench_binary,
+            llama_server_binary=experiment.llama_server_binary,
+        ).model_dump(mode="json"),
     }
     manifest_path = run_dir / "manifest.json"
     _write_json(manifest_path, manifest)

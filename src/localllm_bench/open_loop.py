@@ -1,9 +1,10 @@
-"""Deterministic fixed-rate open-loop serving benchmarks."""
+"""Reproducible open-loop serving benchmarks."""
 
 import concurrent.futures
 import hashlib
 import json
 import math
+import random
 import statistics
 import subprocess
 import time
@@ -16,7 +17,13 @@ from urllib.error import HTTPError, URLError
 import psutil
 from pydantic import BaseModel, Field
 
-from localllm_bench.config import ExperimentSpec, ServerSpec
+from localllm_bench.config import (
+    MAX_ARRIVALS_PER_WINDOW,
+    ArrivalProcess,
+    ExperimentSpec,
+    OpenLoopSpec,
+    ServerSpec,
+)
 from localllm_bench.doctor import inspect_capabilities
 from localllm_bench.load import percentile
 from localllm_bench.model import validate_model
@@ -28,6 +35,10 @@ from localllm_bench.server import (
     wait_until_ready,
 )
 from localllm_bench.telemetry import ResourceMonitor
+
+OPEN_LOOP_SCHEDULER_VERSION = "precomputed-monotonic-offsets-v1"
+OPEN_LOOP_REQUEST_PROTOCOL_VERSION = "llama-completion-stream-greedy-v1"
+OPEN_LOOP_SUMMARY_VERSION = "open-loop-summary-v2"
 
 
 class LoadPrompt(BaseModel):
@@ -44,7 +55,7 @@ class OpenLoopRunResult(BaseModel):
     run_dir: Path
     completed_requests: int
     failed_requests: int
-    summary: list[dict[str, float | int]]
+    summary: list[dict[str, float | int | None]]
 
 
 def load_prompts(path: Path) -> list[LoadPrompt]:
@@ -72,6 +83,89 @@ def request_count(rate_rps: float, duration_seconds: float) -> int:
     return max(1, math.ceil(rate_rps * duration_seconds))
 
 
+def _arrival_stream_sha256(rate_rps: float, arrival_seed: int) -> str:
+    material = f"open-loop-poisson-v1\0{arrival_seed}\0{float(rate_rps).hex()}".encode(
+        "ascii"
+    )
+    return hashlib.sha256(material).hexdigest()
+
+
+def arrival_offsets_ns(
+    rate_rps: float,
+    duration_seconds: float,
+    arrival_process: ArrivalProcess,
+    arrival_seed: int,
+) -> list[int]:
+    """Generate exact arrival offsets for one configured rate window."""
+    if (
+        not math.isfinite(rate_rps)
+        or not math.isfinite(duration_seconds)
+        or rate_rps <= 0
+        or duration_seconds <= 0
+    ):
+        raise ValueError("arrival rate and duration must be finite and positive")
+    if rate_rps * duration_seconds > MAX_ARRIVALS_PER_WINDOW:
+        raise ValueError(
+            f"arrival window exceeds {MAX_ARRIVALS_PER_WINDOW} expected arrivals"
+        )
+    if arrival_process is ArrivalProcess.FIXED:
+        return [
+            int(offset * 1_000_000_000 / rate_rps)
+            for offset in range(request_count(rate_rps, duration_seconds))
+        ]
+    stream_digest = _arrival_stream_sha256(rate_rps, arrival_seed)
+    generator = random.Random(int(stream_digest, 16))
+    offsets: list[int] = []
+    elapsed_seconds = 0.0
+    while True:
+        uniform = generator.random()
+        elapsed_seconds += -math.log1p(-uniform) / rate_rps
+        if elapsed_seconds >= duration_seconds:
+            break
+        if len(offsets) >= MAX_ARRIVALS_PER_WINDOW:
+            raise ValueError(
+                f"arrival realization exceeds {MAX_ARRIVALS_PER_WINDOW} arrivals"
+            )
+        offsets.append(int(elapsed_seconds * 1_000_000_000))
+    return offsets
+
+
+def build_arrival_schedule(load: OpenLoopSpec) -> dict[str, Any]:
+    """Build the complete replayable arrival schedule before measurement."""
+    process = load.arrival_process
+    windows: list[dict[str, Any]] = []
+    for rate_value in load.arrival_rates_rps:
+        rate_rps = float(rate_value)
+        windows.append(
+            {
+                "offered_requests_per_second": rate_rps,
+                "arrival_window_ns": int(float(load.duration_seconds) * 1_000_000_000),
+                "stream_sha256": (
+                    _arrival_stream_sha256(rate_rps, int(load.arrival_seed))
+                    if process is ArrivalProcess.POISSON
+                    else None
+                ),
+                "scheduled_offsets_ns": arrival_offsets_ns(
+                    rate_rps,
+                    float(load.duration_seconds),
+                    process,
+                    int(load.arrival_seed),
+                ),
+            }
+        )
+    return {
+        "schema_version": "1",
+        "arrival_process": process.value,
+        "algorithm": (
+            "poisson-exponential-v1"
+            if process is ArrivalProcess.POISSON
+            else "fixed-spacing-v1"
+        ),
+        "arrival_seed": int(load.arrival_seed),
+        "windows": windows,
+    }
+
+
 def _max_in_flight(records: list[dict[str, Any]]) -> int:
     events: list[tuple[int, int]] = []
     for record in records:
@@ -93,8 +187,9 @@ def summarize_rate(
     records: list[dict[str, Any]],
     resource_samples: list[dict[str, int]],
     latency_slo_ms: float,
-) -> dict[str, float | int]:
-    """Aggregate one fixed-rate window, including scheduler and SLO metrics."""
+    arrival_window_ns: int | None = None,
+) -> dict[str, float | int | None]:
+    """Aggregate one arrival window, including scheduler and SLO metrics."""
     completed = [record for record in records if "error" not in record]
     failed = len(records) - len(completed)
     duration_seconds = duration_ns / 1_000_000_000
@@ -109,12 +204,20 @@ def summarize_rate(
         if isinstance(record.get("output_tokens"), int)
     )
     good = sum(value <= latency_slo_ms for value in e2e_ms)
+    configured_window_ns = arrival_window_ns or duration_ns
+    configured_window_seconds = configured_window_ns / 1_000_000_000
     return {
         "offered_requests_per_second": rate_rps,
+        "realized_offered_requests_per_second": (
+            len(records) / configured_window_seconds
+            if configured_window_seconds > 0
+            else 0.0
+        ),
         "requests": len(records),
         "completed_requests": len(completed),
         "failed_requests": failed,
-        "error_rate": failed / len(records) if records else 0.0,
+        "error_rate": failed / len(records) if records else None,
+        "arrival_window_ns": configured_window_ns,
         "duration_ns": duration_ns,
         "achieved_requests_per_second": (
             len(completed) / duration_seconds if duration_seconds > 0 else 0.0
@@ -125,13 +228,13 @@ def summarize_rate(
         "goodput_requests_per_second": (
             good / duration_seconds if duration_seconds > 0 else 0.0
         ),
-        "slo_attainment_rate": good / len(records) if records else 0.0,
-        "median_ttft_ms": statistics.median(ttft_ms) if ttft_ms else 0.0,
-        "p95_ttft_ms": percentile(ttft_ms, 95) if ttft_ms else 0.0,
-        "median_e2e_ms": statistics.median(e2e_ms) if e2e_ms else 0.0,
-        "p95_e2e_ms": percentile(e2e_ms, 95) if e2e_ms else 0.0,
+        "slo_attainment_rate": good / len(records) if records else None,
+        "median_ttft_ms": statistics.median(ttft_ms) if ttft_ms else None,
+        "p95_ttft_ms": percentile(ttft_ms, 95) if ttft_ms else None,
+        "median_e2e_ms": statistics.median(e2e_ms) if e2e_ms else None,
+        "p95_e2e_ms": percentile(e2e_ms, 95) if e2e_ms else None,
         "p95_client_schedule_delay_ms": (
-            percentile(schedule_delay_ms, 95) if schedule_delay_ms else 0.0
+            percentile(schedule_delay_ms, 95) if schedule_delay_ms else None
         ),
         "max_client_in_flight": _max_in_flight(records),
         "peak_process_tree_rss_bytes": max(
@@ -146,12 +249,14 @@ def _run_request(
     server: ServerSpec,
     prompt: LoadPrompt,
     request_index: int,
+    rate_request_index: int,
     level_started_ns: int,
     scheduled_ns: int,
 ) -> dict[str, Any]:
     client_started_ns = time.monotonic_ns()
     metadata: dict[str, Any] = {
         "request_index": request_index,
+        "rate_request_index": rate_request_index,
         "prompt_id": prompt.prompt_id,
         "scheduled_offset_ns": scheduled_ns - level_started_ns,
         "client_started_offset_ns": client_started_ns - level_started_ns,
@@ -181,20 +286,19 @@ def run_rate_window(
     base_url: str,
     server: ServerSpec,
     prompts: list[LoadPrompt],
-    rate_rps: float,
+    scheduled_offsets_ns: list[int],
     duration_seconds: float,
     max_client_workers: int,
     first_request_index: int,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Schedule fixed-spacing arrivals independently of request completion."""
-    count = request_count(rate_rps, duration_seconds)
+    """Execute precomputed arrivals independently of request completion."""
     level_started_ns = time.monotonic_ns()
     futures: list[concurrent.futures.Future[dict[str, Any]]] = []
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=max_client_workers
     ) as executor:
-        for offset in range(count):
-            scheduled_ns = level_started_ns + int(offset * 1_000_000_000 / rate_rps)
+        for rate_request_index, scheduled_offset_ns in enumerate(scheduled_offsets_ns):
+            scheduled_ns = level_started_ns + scheduled_offset_ns
             remaining_ns = scheduled_ns - time.monotonic_ns()
             if remaining_ns > 0:
                 time.sleep(remaining_ns / 1_000_000_000)
@@ -203,8 +307,9 @@ def run_rate_window(
                     _run_request,
                     base_url,
                     server,
-                    prompts[offset % len(prompts)],
-                    first_request_index + offset,
+                    prompts[rate_request_index % len(prompts)],
+                    first_request_index + rate_request_index,
+                    rate_request_index,
                     level_started_ns,
                     scheduled_ns,
                 )
@@ -214,7 +319,13 @@ def run_rate_window(
     remaining_ns = configured_end_ns - time.monotonic_ns()
     if remaining_ns > 0:
         time.sleep(remaining_ns / 1_000_000_000)
-    duration_ns = time.monotonic_ns() - level_started_ns
+    duration_ns = max(
+        int(duration_seconds * 1_000_000_000),
+        max(
+            (int(record["client_completed_offset_ns"]) for record in records),
+            default=0,
+        ),
+    )
     return sorted(records, key=lambda record: int(record["request_index"])), duration_ns
 
 
@@ -225,7 +336,7 @@ def _write_json(path: Path, value: Any) -> None:
 
 
 def run_open_loop_benchmark(experiment: ExperimentSpec) -> OpenLoopRunResult:
-    """Run deterministic fixed-rate arrivals against a managed llama-server."""
+    """Run configured open-loop arrivals against a managed llama-server."""
     if experiment.server is None:
         raise ValueError("experiment does not define a server section")
     if experiment.open_loop is None:
@@ -247,8 +358,12 @@ def run_open_loop_benchmark(experiment: ExperimentSpec) -> OpenLoopRunResult:
     run_dir = experiment.output_dir / run_id
     logs_dir = run_dir / "logs"
     logs_dir.mkdir(parents=True)
+    arrival_schedule = build_arrival_schedule(load)
+    schedule_path = run_dir / "arrival_schedule.json"
+    _write_json(schedule_path, arrival_schedule)
     command = build_server_command(experiment, runtime_server, port)
     manifest: dict[str, Any] = {
+        "artifact_schema_version": "2",
         "run_id": run_id,
         "created_at": datetime.now(UTC).isoformat(),
         "run_type": "open-loop-load",
@@ -257,24 +372,48 @@ def run_open_loop_benchmark(experiment: ExperimentSpec) -> OpenLoopRunResult:
         "context_tokens_per_slot": experiment.server.context_size,
         "prompt_dataset_sha256": prompt_dataset_sha256(load.prompt_dataset),
         "prompt_count": len(prompts),
+        "arrival_process": load.arrival_process.value,
+        "arrival_algorithm": arrival_schedule["algorithm"],
+        "scheduler_version": OPEN_LOOP_SCHEDULER_VERSION,
+        "request_protocol_version": OPEN_LOOP_REQUEST_PROTOCOL_VERSION,
+        "summary_version": OPEN_LOOP_SUMMARY_VERSION,
+        "rate_order_protocol": load.rate_order_protocol.value,
+        "rate_order_offset": int(load.rate_order_offset),
+        "arrival_seed": int(load.arrival_seed),
+        "arrival_schedule_sha256": hashlib.sha256(
+            schedule_path.read_bytes()
+        ).hexdigest(),
         "command": command,
-        "capabilities": inspect_capabilities(run_dir).model_dump(mode="json"),
+        "capabilities": inspect_capabilities(
+            run_dir,
+            llama_bench_binary=experiment.llama_bench_binary,
+            llama_server_binary=experiment.llama_server_binary,
+        ).model_dump(mode="json"),
     }
     manifest_path = run_dir / "manifest.json"
     _write_json(manifest_path, manifest)
     records: list[dict[str, Any]] = []
-    summaries: list[dict[str, float | int]] = []
+    summaries: list[dict[str, float | int | None]] = []
     started_ns = time.monotonic_ns()
     with (
         (logs_dir / "server.stdout.log").open("w", encoding="utf-8") as stdout,
         (logs_dir / "server.stderr.log").open("w", encoding="utf-8") as stderr,
     ):
-        process = subprocess.Popen(command, stdout=stdout, stderr=stderr, text=True)
-        monitor = ResourceMonitor(
-            psutil.Process(process.pid), experiment.sample_interval_ms / 1000
+        process = subprocess.Popen(
+            command,
+            stdout=stdout,
+            stderr=stderr,
+            text=True,
+            start_new_session=True,
         )
-        monitor.start()
+        monitor: ResourceMonitor | None = None
+        monitor_started = False
         try:
+            monitor = ResourceMonitor(
+                psutil.Process(process.pid), experiment.sample_interval_ms / 1000
+            )
+            monitor.start()
+            monitor_started = True
             base_url = f"http://127.0.0.1:{port}"
             manifest["model_load_time_ns"] = wait_until_ready(
                 base_url, process, runtime_server.startup_timeout_seconds
@@ -290,13 +429,15 @@ def run_open_loop_benchmark(experiment: ExperimentSpec) -> OpenLoopRunResult:
             manifest["warmup_completed"] = load.warmup_requests
             _write_json(manifest_path, manifest)
             request_index = 0
-            for rate in load.arrival_rates_rps:
+            for rate_index, (rate, window) in enumerate(
+                zip(load.arrival_rates_rps, arrival_schedule["windows"], strict=True)
+            ):
                 level_started_offset_ns = time.monotonic_ns() - monitor.started_ns
                 level_records, duration_ns = run_rate_window(
                     base_url,
                     runtime_server,
                     prompts,
-                    float(rate),
+                    [int(value) for value in window["scheduled_offsets_ns"]],
                     float(load.duration_seconds),
                     int(load.max_client_workers),
                     request_index,
@@ -304,6 +445,7 @@ def run_open_loop_benchmark(experiment: ExperimentSpec) -> OpenLoopRunResult:
                 level_ended_offset_ns = time.monotonic_ns() - monitor.started_ns
                 for record in level_records:
                     record["offered_requests_per_second"] = float(rate)
+                    record["open_loop_rate_index"] = rate_index
                 level_samples = [
                     sample
                     for sample in monitor.samples
@@ -311,15 +453,17 @@ def run_open_loop_benchmark(experiment: ExperimentSpec) -> OpenLoopRunResult:
                     <= sample["monotonic_offset_ns"]
                     <= level_ended_offset_ns
                 ]
-                summaries.append(
-                    summarize_rate(
-                        float(rate),
-                        duration_ns,
-                        level_records,
-                        level_samples,
-                        float(load.latency_slo_ms),
-                    )
+                for sample in level_samples:
+                    sample["open_loop_rate_index"] = rate_index
+                rate_summary = summarize_rate(
+                    float(rate),
+                    duration_ns,
+                    level_records,
+                    level_samples,
+                    float(load.latency_slo_ms),
+                    int(window["arrival_window_ns"]),
                 )
+                summaries.append(rate_summary)
                 records.extend(level_records)
                 request_index += len(level_records)
                 if experiment.fail_fast and any(
@@ -329,8 +473,10 @@ def run_open_loop_benchmark(experiment: ExperimentSpec) -> OpenLoopRunResult:
                 if load.cooldown_seconds > 0:
                     time.sleep(float(load.cooldown_seconds))
         finally:
-            stop_server(process)
-            samples = monitor.stop()
+            try:
+                stop_server(process, process_group=True)
+            finally:
+                samples = monitor.stop() if monitor_started and monitor else []
     with (run_dir / "requests.jsonl").open("w", encoding="utf-8") as stream:
         for record in records:
             stream.write(json.dumps(record, sort_keys=True) + "\n")

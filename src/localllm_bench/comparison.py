@@ -44,11 +44,20 @@ class VariantSummary(BaseModel):
     zero_shot_quality_per_gib: float
 
 
+class QualityEfficiencyPoint(BaseModel):
+    """One non-dominated zero-shot quality-efficiency result."""
+
+    quantization: str
+    zero_shot_quality_per_second: float
+    zero_shot_quality_per_gib: float
+
+
 class ComparisonResult(BaseModel):
     """Output files and summaries from one comparison."""
 
     output_dir: Path
     variants: list[VariantSummary]
+    quality_pareto_frontier: list[QualityEfficiencyPoint]
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -86,11 +95,13 @@ def _hardware_sha256(manifest: dict[str, Any]) -> str:
     capabilities = manifest["capabilities"]
     hardware = {
         "architecture": capabilities["architecture"],
+        "machine_model": capabilities.get("machine_model"),
         "logical_cpus": capabilities["logical_cpus"],
         "memory_bytes": capabilities["memory_bytes"],
         "os": capabilities["os"],
         "os_release": capabilities["os_release"],
         "physical_cpus": capabilities["physical_cpus"],
+        "processor": capabilities.get("processor"),
         "unified_memory": capabilities["unified_memory"],
     }
     payload = json.dumps(hardware, sort_keys=True, separators=(",", ":"))
@@ -107,6 +118,18 @@ def _validate_run_types(
     identities = {_model_identity(item) for item in (micro, serving, quality)}
     if len(identities) != 1:
         raise ValueError("variant run manifests refer to different model artifacts")
+    manifests = (micro, serving, quality)
+    if len({_hardware_sha256(item) for item in manifests}) != 1:
+        raise ValueError("variant run manifests use different hardware")
+    if len({_protocol_sha256(item) for item in manifests}) != 1:
+        raise ValueError("variant run manifests use different benchmark protocols")
+    for executable in ("llama_bench", "llama_server"):
+        fingerprints = {
+            str(item["capabilities"][executable]["sha256"]) for item in manifests
+        }
+        if len(fingerprints) != 1:
+            name = executable.replace("_", "-")
+            raise ValueError(f"variant run manifests use different {name} binaries")
 
 
 def summarize_variant(runs: VariantRuns) -> VariantSummary:
@@ -150,6 +173,8 @@ def summarize_variant(runs: VariantRuns) -> VariantSummary:
     if len(model_sizes) != 1:
         raise ValueError("microbenchmark run has inconsistent model sizes")
     peak_rss = int(serving_manifest["peak_process_tree_rss_bytes"])
+    if peak_rss <= 0:
+        raise ValueError("serving run must report positive peak process RSS")
     zero_shot_accuracy = float(zero_shot["answer_accuracy"])
     return VariantSummary(
         quantization=quantization,
@@ -180,13 +205,58 @@ def summarize_variant(runs: VariantRuns) -> VariantSummary:
         zero_shot_quality_per_second=float(
             zero_shot["quality_adjusted_answers_per_second"]
         ),
-        zero_shot_quality_per_gib=(
-            zero_shot_accuracy / (peak_rss / (1024**3)) if peak_rss > 0 else 0.0
+        zero_shot_quality_per_gib=zero_shot_accuracy / (peak_rss / (1024**3)),
+    )
+
+
+def _dominates_quality(
+    candidate: QualityEfficiencyPoint, point: QualityEfficiencyPoint
+) -> bool:
+    no_worse = (
+        candidate.zero_shot_quality_per_second >= point.zero_shot_quality_per_second
+        and candidate.zero_shot_quality_per_gib >= point.zero_shot_quality_per_gib
+    )
+    strictly_better = (
+        candidate.zero_shot_quality_per_second > point.zero_shot_quality_per_second
+        or candidate.zero_shot_quality_per_gib > point.zero_shot_quality_per_gib
+    )
+    return no_worse and strictly_better
+
+
+def quality_efficiency_pareto_frontier(
+    variants: list[VariantSummary],
+) -> list[QualityEfficiencyPoint]:
+    """Return variants not dominated on zero-shot quality/s and quality/GiB."""
+    points = [
+        QualityEfficiencyPoint(
+            quantization=variant.quantization,
+            zero_shot_quality_per_second=variant.zero_shot_quality_per_second,
+            zero_shot_quality_per_gib=variant.zero_shot_quality_per_gib,
+        )
+        for variant in variants
+    ]
+    frontier = [
+        point
+        for point in points
+        if not any(
+            _dominates_quality(candidate, point)
+            for candidate in points
+            if candidate is not point
+        )
+    ]
+    return sorted(
+        frontier,
+        key=lambda point: (
+            -point.zero_shot_quality_per_second,
+            -point.zero_shot_quality_per_gib,
+            point.quantization,
         ),
     )
 
 
-def _render_html(variants: list[VariantSummary]) -> str:
+def _render_html(
+    variants: list[VariantSummary], frontier: list[QualityEfficiencyPoint]
+) -> str:
     rows: list[str] = []
     for variant in variants:
         values = [
@@ -207,14 +277,27 @@ def _render_html(variants: list[VariantSummary]) -> str:
             + "".join(f"<td>{html.escape(value)}</td>" for value in values)
             + "</tr>"
         )
+    frontier_rows: list[str] = []
+    for point in frontier:
+        values = [
+            point.quantization,
+            f"{point.zero_shot_quality_per_second:.3f}",
+            f"{point.zero_shot_quality_per_gib:.3f}",
+        ]
+        frontier_rows.append(
+            "<tr>"
+            + "".join(f"<td>{html.escape(value)}</td>" for value in values)
+            + "</tr>"
+        )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LocalLLM Bench comparison</title>
 <style>
 body {{ font-family: ui-monospace, monospace; margin: 2rem; background: #101417;
-color: #e8efe9; }} h1 {{ color: #9be15d; }} table {{ border-collapse: collapse;
-width: 100%; }} th, td {{ padding: .7rem; border-bottom: 1px solid #344038;
+color: #e8efe9; }} h1, h2 {{ color: #9be15d; }} table {{ border-collapse: collapse;
+width: 100%; margin-bottom: 2rem; }} th, td {{ padding: .7rem;
+border-bottom: 1px solid #344038;
 text-align: right; }} th:first-child, td:first-child {{ text-align: left; }}
 th {{ color: #101417; background: #9be15d; }} .panel {{ overflow-x: auto; }}
 </style></head><body><h1>Quantization comparison</h1><div class="panel"><table>
@@ -222,6 +305,11 @@ th {{ color: #101417; background: #9be15d; }} .panel {{ overflow-x: auto; }}
 <th>Generation token/s</th><th>TTFT ms</th><th>E2E ms</th><th>RSS MiB</th>
 <th>Zero-shot accuracy</th><th>Engineered schema</th><th>Quality/s</th>
 <th>Quality/GiB</th></tr></thead><tbody>{"".join(rows)}</tbody>
+</table></div><h2>Zero-shot quality-efficiency Pareto frontier</h2>
+<p>Non-dominated variants maximize both quality-adjusted answers per second and
+answer accuracy per GiB of peak serving process RSS.</p>
+<div class="panel"><table><thead><tr><th>Quant</th><th>Quality/s</th>
+<th>Quality/GiB</th></tr></thead><tbody>{"".join(frontier_rows)}</tbody>
 </table></div></body></html>"""
 
 
@@ -246,6 +334,7 @@ def compare_variants(variants: list[VariantRuns], output_dir: Path) -> Compariso
         raise ValueError("comparison variants use different llama-bench binaries")
     if len({item.llama_server_sha256 for item in summaries}) != 1:
         raise ValueError("comparison variants use different llama-server binaries")
+    frontier = quality_efficiency_pareto_frontier(summaries)
     output_dir.mkdir(parents=True, exist_ok=False)
     (output_dir / "comparison.json").write_text(
         json.dumps(
@@ -256,7 +345,20 @@ def compare_variants(variants: list[VariantRuns], output_dir: Path) -> Compariso
         + "\n",
         encoding="utf-8",
     )
-    (output_dir / "comparison.html").write_text(
-        _render_html(summaries), encoding="utf-8"
+    (output_dir / "quality-pareto.json").write_text(
+        json.dumps(
+            [item.model_dump(mode="json") for item in frontier],
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
     )
-    return ComparisonResult(output_dir=output_dir, variants=summaries)
+    (output_dir / "comparison.html").write_text(
+        _render_html(summaries, frontier), encoding="utf-8"
+    )
+    return ComparisonResult(
+        output_dir=output_dir,
+        variants=summaries,
+        quality_pareto_frontier=frontier,
+    )

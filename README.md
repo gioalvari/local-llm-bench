@@ -123,6 +123,14 @@ The first controlled concurrency study is documented in
 The first fixed-rate saturation study is documented in
 [`results/qwen-0.5b-q4-open-loop-m4-pro.md`](results/qwen-0.5b-q4-open-loop-m4-pro.md).
 
+The repeated 60-second seeded-Poisson study with run-level confidence intervals
+is documented in
+[`results/qwen-0.5b-q4-poisson-open-loop-m4-pro.md`](results/qwen-0.5b-q4-poisson-open-loop-m4-pro.md).
+
+The follow-up low-rate study that brackets the 500 ms SLO boundary is documented
+in
+[`results/qwen-0.5b-q4-poisson-low-rate-m4-pro.md`](results/qwen-0.5b-q4-poisson-low-rate-m4-pro.md).
+
 The controlled context-window and prompt-length study is documented in
 [`results/qwen-0.5b-q4-context-m4-pro.md`](results/qwen-0.5b-q4-context-m4-pro.md).
 
@@ -163,6 +171,52 @@ client in-flight requests, errors, and memory. Requests are emitted at fixed
 intervals independently of previous completion, then fully drained before the
 next rate.
 
+Run a longer open-loop study with seeded Poisson inter-arrival times and eight
+independent fresh-server repetitions:
+
+```bash
+uv run llmb open-loop configs/experiments/qwen-0.5b-q4-poisson-open-loop.yaml
+```
+
+Open `runs/<study-id>/analysis/analysis.html` for the aggregate study. To render
+one child run separately, use
+`uv run llmb report runs/<study-id>/repetitions/<open-loop-run-id>`.
+
+Schema v2 Poisson runs derive an independent random stream for each offered
+rate. Repetitions use consecutive arrival seeds and start a new `llama-server`
+sequentially, avoiding host contention and server-state leakage. Rate order uses
+balanced cyclic rotations, so every rate appears equally often in each execution
+position instead of being confounded with server age. Every complete
+precomputed schedule is persisted in `arrival_schedule.json` with its digest in
+the child manifest, so matched model variants can replay the same traffic. The
+configured rate remains the Poisson intensity; reports separately show the
+realized request rate inside the finite arrival window. Open-loop manifests
+carrying the expanded artifact contract declare `artifact_schema_version: "2"`;
+reports continue to accept earlier manifests.
+
+At least five independent runs are required. The study writes
+`analysis/analysis.json` and a self-contained HTML report with
+deterministic 95% percentile intervals for arithmetic means across runs. The
+bootstrap resamples complete fresh-server runs, not individual requests. A
+metric missing from any run, such as latency in an empty Poisson window, remains
+undefined rather than silently dropping that run.
+
+Reanalyze five or more compatible completed runs without starting a server:
+
+```bash
+uv run llmb analyze-open-loop \
+  --run-dir runs/<open-loop-run-a> \
+  --run-dir runs/<open-loop-run-b> \
+  --run-dir runs/<open-loop-run-c> \
+  --run-dir runs/<open-loop-run-d> \
+  --run-dir runs/<open-loop-run-e> \
+  --output-dir runs/<open-loop-analysis>
+```
+
+The analyzer rejects modified schedule digests, incomplete or reordered rate
+grids, duplicate Poisson seeds, and differences in model, protocol, hardware,
+`llama-server`, or prompt corpus.
+
 Measure exact prompt lengths across context windows:
 
 ```bash
@@ -176,6 +230,23 @@ one-slot server for every case. It records load time, prompt evaluation,
 TTFT/end-to-end latency, decode rate, and memory. The configured sweep separates
 window-size effects at a fixed prompt length from prompt-length effects at a
 fixed context window.
+
+## Prefix-sharing (multi-agent) benchmark
+
+Compare OpenAI-compatible local servers on multi-turn agent conversations that
+share a long common system-prompt prefix while retaining agent-specific suffixes.
+Each target starts from a fresh server cache for every repetition; requests stream
+through `/v1/chat/completions`, and the run records TTFT, end-to-end latency,
+wall-clock throughput, and backend cache telemetry where available.
+
+```bash
+uv run llmb prefix-sharing configs/experiments/prefix-sharing-qwen-0.5b.yaml
+```
+
+The YAML configuration defines the model, corpus and prompt datasets, targets,
+and workload. Commands accept `{model}` and `{port}` placeholders. Artifacts
+include `manifest.json`, `requests.jsonl`, `repetitions.jsonl`, `summary.json`,
+`report.md`, server logs, and optional `stats.jsonl` snapshots.
 
 Analyze the paired effects in a completed two-level microbenchmark matrix:
 
@@ -225,6 +296,11 @@ The comparison's model-size field is the tensor size reported by `llama.cpp`;
 peak RSS comes from the managed serving process tree. Neither value should be
 interpreted as standalone VRAM on unified-memory hardware.
 
+The comparator also writes `quality-pareto.json` with the non-dominated
+zero-shot variants that jointly maximize quality-adjusted answers per second and
+answer accuracy per GiB of peak serving process RSS. Exact ties remain on the
+frontier.
+
 Schema validity is intentionally strict: the full response must be exactly the
 requested JSON object. A single JSON object inside a Markdown fence may still
 be parsed for semantic scoring, but it remains a schema failure. This keeps
@@ -251,11 +327,22 @@ runs/<run-id>/
 ├── manifest.json
 ├── measurements.jsonl
 ├── evaluations.jsonl
+├── arrival_schedule.json
 ├── summary.json
 ├── resource_samples.jsonl
 ├── failures.jsonl
 ├── logs/
 └── report.html
+```
+
+Repeated open-loop studies contain child runs and their aggregate analysis:
+
+```text
+runs/<study-id>/
+├── repetitions/<child-run-id>/...
+└── analysis/
+    ├── analysis.json
+    └── analysis.html
 ```
 
 Durations are stored as integer nanoseconds and memory values as integer bytes.
@@ -284,12 +371,6 @@ the backend's quantization-name discovery.
 
 The charts are generated from `docs/chart-data.json`, which cites its source
 reports under `results/`. Regenerate them deterministically with `make charts`.
-
-The next serving phase will add:
-
-- Longer open-loop workloads with randomized inter-arrival times.
-- Repeated independent runs and confidence intervals.
-- Quality-per-second and quality-per-gigabyte Pareto analysis.
 
 ## Fine-tuning track
 
@@ -357,6 +438,59 @@ make charts
 Hardware integration tests are kept separate from unit tests. No model weights,
 generated datasets, credentials, or machine-specific run artifacts belong in
 version control.
+
+### OpenSpec workflow
+
+This repository includes a lightweight OpenSpec setup for changes that benefit
+from persistent requirements, design decisions, and implementation tasks. Use it
+for multi-session features, artifact/schema changes, migrations, security-sensitive
+behavior, or benchmark protocol changes. Keep small fixes in the normal OpenCode
+Quick or Build workflow.
+
+Prerequisites: Node.js 20.19+ and OpenSpec 1.13.0. Install and initialize with:
+
+```bash
+npm install -g @fission-ai/openspec@1.13.0
+openspec config set telemetry.enabled false
+openspec config set delivery commands
+openspec init --tools opencode --profile core --language en
+```
+
+OpenSpec commands inherit the active OpenCode primary agent and model. Use Plan
+(Claude Opus 5 in the recommended global routing) for exploration, proposals,
+and artifact revisions; start a Build session (GPT-5.6 Sol) for apply; use
+Reviewer before syncing or archiving significant changes. Repository content read
+by these workflows is processed by the selected remote model provider.
+
+The core commands available in OpenCode are:
+
+```text
+/opsx-explore   investigate an idea without implementing it
+/opsx-propose   create proposal, delta specs, design, and tasks
+/opsx-apply     implement the approved tasks
+/opsx-update    revise existing planning artifacts
+/opsx-sync      merge delta specs into the current specs
+/opsx-archive   archive a completed change
+```
+
+Project constraints live in `openspec/config.yaml`. Validate the current state
+with:
+
+```bash
+openspec doctor
+openspec validate --all
+```
+
+The `.opencode/commands/opsx-*.md` files are generated by OpenSpec. Do not edit
+them manually. Refresh them after upgrading OpenSpec with:
+
+```bash
+openspec update
+```
+
+Restart OpenCode after initialization or updates so it reloads the generated
+commands. OpenSpec telemetry is disabled in the setup above; `OPENSPEC_TELEMETRY=0`
+or `DO_NOT_TRACK=1` provide equivalent environment-level opt-outs.
 
 ## License
 

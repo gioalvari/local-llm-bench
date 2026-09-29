@@ -28,6 +28,8 @@ class CapabilityReport(BaseModel):
     os: str
     os_release: str
     architecture: str
+    machine_model: str | None
+    processor: str | None
     logical_cpus: int
     physical_cpus: int | None
     memory_bytes: int
@@ -80,7 +82,12 @@ def _executable(name: str, version_args: list[str] | None = None) -> ExecutableI
     )
 
 
-def inspect_capabilities(root: Path | None = None) -> CapabilityReport:
+def inspect_capabilities(
+    root: Path | None = None,
+    *,
+    llama_bench_binary: str = "llama-bench",
+    llama_server_binary: str = "llama-server",
+) -> CapabilityReport:
     """Inspect the local host without modifying it.
 
     Parameters
@@ -98,10 +105,19 @@ def inspect_capabilities(root: Path | None = None) -> CapabilityReport:
     disk = shutil.disk_usage(target)
     system = platform.system()
     logical_cpus = os.cpu_count() or 1
+    machine_model = None
+    processor = platform.processor() or None
+    if system == "Darwin":
+        machine_model = _first_line(["sysctl", "-n", "hw.model"])
+        processor = (
+            _first_line(["sysctl", "-n", "machdep.cpu.brand_string"]) or processor
+        )
     return CapabilityReport(
         os=system,
         os_release=platform.release(),
         architecture=platform.machine(),
+        machine_model=machine_model,
+        processor=processor,
         logical_cpus=logical_cpus,
         physical_cpus=psutil.cpu_count(logical=False),
         memory_bytes=memory.total,
@@ -109,8 +125,8 @@ def inspect_capabilities(root: Path | None = None) -> CapabilityReport:
         disk_free_bytes=disk.free,
         unified_memory=system == "Darwin" and platform.machine() == "arm64",
         # llama-bench embeds its build commit in result rows but has no version flag.
-        llama_bench=_executable("llama-bench"),
-        llama_server=_executable("llama-server", ["--version"]),
+        llama_bench=_executable(llama_bench_binary),
+        llama_server=_executable(llama_server_binary, ["--version"]),
         mlx_installed=importlib.util.find_spec("mlx") is not None,
         torch_installed=importlib.util.find_spec("torch") is not None,
     )

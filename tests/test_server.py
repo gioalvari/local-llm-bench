@@ -1,5 +1,7 @@
 import json
+import subprocess
 import sys
+import time
 from io import BytesIO
 from pathlib import Path
 
@@ -10,6 +12,7 @@ from localllm_bench.server import (
     build_server_command,
     parse_sse_line,
     run_server_benchmark,
+    stop_server,
 )
 
 
@@ -144,3 +147,68 @@ def test_stream_parser_rejects_empty_content() -> None:
 
     with pytest.raises(ValueError, match="no generated content"):
         _read_stream(BytesIO(b'data: {"stop":true}\n\n'), 0)
+
+
+def test_stop_server_kills_process_group_descendants(tmp_path: Path) -> None:
+    child_pid_path = tmp_path / "child.pid"
+    script = tmp_path / "process_tree.py"
+    script.write_text(
+        """import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+child = subprocess.Popen([
+    sys.executable,
+    "-c",
+    "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)",
+])
+Path(sys.argv[1]).write_text(str(child.pid), encoding="utf-8")
+time.sleep(60)
+""",
+        encoding="utf-8",
+    )
+    process = subprocess.Popen(
+        [sys.executable, str(script), str(child_pid_path)],
+        start_new_session=True,
+        text=True,
+    )
+    deadline = time.monotonic() + 5
+    while not child_pid_path.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+    stop_server(process, process_group=True, timeout_seconds=0.1)
+    assert process.poll() is not None
+    with pytest.raises(ProcessLookupError):
+        __import__("os").kill(child_pid, 0)
+
+
+def test_stop_server_kills_descendant_after_leader_exits(tmp_path: Path) -> None:
+    child_pid_path = tmp_path / "orphan.pid"
+    script = tmp_path / "orphan_tree.py"
+    script.write_text(
+        """import subprocess
+import sys
+from pathlib import Path
+
+child = subprocess.Popen([
+    sys.executable,
+    "-c",
+    "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)",
+])
+Path(sys.argv[1]).write_text(str(child.pid), encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
+    process = subprocess.Popen(
+        [sys.executable, str(script), str(child_pid_path)],
+        start_new_session=True,
+        text=True,
+    )
+    process.wait(timeout=5)
+    child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+    stop_server(process, process_group=True, timeout_seconds=0.1)
+    with pytest.raises(ProcessLookupError):
+        __import__("os").kill(child_pid, 0)

@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from localllm_bench.config import (
+    ArrivalProcess,
     BenchmarkMatrix,
     ContextSweepSpec,
     ExperimentSpec,
@@ -91,10 +92,84 @@ def test_load_requires_unique_increasing_levels() -> None:
 
 
 def test_open_loop_requires_unique_increasing_rates() -> None:
-    with pytest.raises(ValidationError, match="unique and increasing"):
+    with pytest.raises(ValidationError, match="must be increasing"):
         OpenLoopSpec(prompt_dataset=Path("prompts.jsonl"), arrival_rates_rps=[2, 1])
-    with pytest.raises(ValidationError, match="unique and increasing"):
+    with pytest.raises(ValidationError, match="must be unique"):
         OpenLoopSpec(prompt_dataset=Path("prompts.jsonl"), arrival_rates_rps=[1, 1])
+
+
+def test_open_loop_arrival_process_requires_schema_v2() -> None:
+    spec = load_experiment(
+        Path("configs/experiments/qwen-0.5b-q4-poisson-open-loop.yaml")
+    )
+    assert spec.schema_version == "2"
+    assert spec.open_loop is not None
+    assert spec.open_loop.arrival_process is ArrivalProcess.POISSON
+    assert spec.open_loop.independent_runs == 8
+    assert spec.open_loop.bootstrap_iterations == 10_000
+    payload = spec.model_dump(mode="json")
+    payload["schema_version"] = "1"
+    with pytest.raises(ValidationError, match="require schema_version 2"):
+        ExperimentSpec.model_validate(payload)
+
+
+def test_load_low_rate_poisson_study() -> None:
+    spec = load_experiment(
+        Path("configs/experiments/qwen-0.5b-q4-poisson-low-rate.yaml")
+    )
+    assert spec.open_loop is not None
+    assert [float(rate) for rate in spec.open_loop.arrival_rates_rps] == [
+        0.5,
+        1.0,
+        1.5,
+        2.0,
+    ]
+    assert spec.open_loop.independent_runs == 8
+
+
+def test_open_loop_defaults_to_fixed_arrivals() -> None:
+    load = OpenLoopSpec(prompt_dataset=Path("prompts.jsonl"), arrival_rates_rps=[1])
+    assert load.arrival_process is ArrivalProcess.FIXED
+    assert load.arrival_seed == 42
+    assert load.independent_runs == 1
+    assert load.bootstrap_iterations == 10_000
+    assert load.bootstrap_seed == 42
+    with pytest.raises(ValidationError):
+        OpenLoopSpec(
+            prompt_dataset=Path("prompts.jsonl"),
+            arrival_rates_rps=[1],
+            arrival_seed=-1,
+        )
+    for field, value in (
+        ("arrival_rates_rps", [float("inf")]),
+        ("duration_seconds", float("inf")),
+    ):
+        payload = {"prompt_dataset": "prompts.jsonl", "arrival_rates_rps": [1]}
+        payload[field] = value
+        with pytest.raises(ValidationError, match="finite number"):
+            OpenLoopSpec.model_validate(payload)
+    with pytest.raises(ValidationError, match="at most 1000000"):
+        OpenLoopSpec(
+            prompt_dataset=Path("prompts.jsonl"),
+            arrival_rates_rps=[1_000_001],
+            duration_seconds=1,
+        )
+
+
+def test_repeated_open_loop_requires_schema_v2() -> None:
+    spec = load_experiment(Path("configs/experiments/qwen-0.5b-smoke.yaml"))
+    payload = spec.model_dump(mode="json")
+    assert isinstance(payload["open_loop"], dict)
+    payload["open_loop"]["independent_runs"] = 5
+    with pytest.raises(ValidationError, match="require schema_version 2"):
+        ExperimentSpec.model_validate(payload)
+    payload["schema_version"] = "2"
+    payload["open_loop"]["independent_runs"] = 2
+    with pytest.raises(ValidationError, match="at least 5"):
+        ExperimentSpec.model_validate(payload)
+    payload["open_loop"]["independent_runs"] = 5
+    with pytest.raises(ValidationError, match="multiple of the rate count"):
+        ExperimentSpec.model_validate(payload)
 
 
 def test_context_sweep_rejects_duplicates_and_undersized_windows() -> None:

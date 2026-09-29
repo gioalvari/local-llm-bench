@@ -1,0 +1,50 @@
+schema_version: "2"
+experiment_id: qwen-0-5b-q4-poisson-open-loop
+output_dir: runs
+llama_bench_binary: llama-bench
+llama_server_binary: llama-server
+sample_interval_ms: 100
+fail_fast: true
+model:
+  name: Qwen2.5-0.5B-Instruct-Q4_K_M
+  path: models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
+  source_repo: bartowski/Qwen2.5-0.5B-Instruct-GGUF
+  source_revision: 41ba88dbac95fed2528c92514c131d73eb5a174b
+  sha256: 6eb923e7d26e9cea28811e1a8e852009b21242fb157b26149d3b188f3a8c8653
+  quantization: Q4_K_M
+matrix:
+  repetitions: 3
+  workloads:
+    - name: standard
+      prompt_tokens: 512
+      generation_tokens: 128
+  batch_sizes: [512]
+  ubatch_sizes: [128]
+  threads: [10]
+  gpu_layers: [-1]
+  flash_attention: ["on"]
+server:
+  prompt: "Explain in two sentences why electricity grids must balance supply and demand."
+  repetitions: 5
+  output_tokens: 64
+  context_size: 2048
+  batch_size: 512
+  ubatch_size: 128
+  threads: 10
+  gpu_layers: -1
+  flash_attention: "on"
+  parallel: 1
+open_loop:
+  prompt_dataset: datasets/load/energy-prompts.jsonl
+  arrival_rates_rps: [2, 4, 8, 12]
+  arrival_process: poisson
+  arrival_seed: 42
+  duration_seconds: 60
+  warmup_requests: 1
+  server_slots: 4
+  max_client_workers: 32
+  latency_slo_ms: 500
+  cooldown_seconds: 0.5
+  independent_runs: 8
+  bootstrap_iterations: 10000
+  bootstrap_seed: 42

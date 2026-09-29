@@ -88,7 +88,11 @@ def _prepare_run(spec: ExperimentSpec, plan: Plan) -> tuple[str, Path]:
         "created_at": datetime.now(UTC).isoformat(),
         "experiment": spec.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
-        "capabilities": inspect_capabilities(run_dir).model_dump(mode="json"),
+        "capabilities": inspect_capabilities(
+            run_dir,
+            llama_bench_binary=spec.llama_bench_binary,
+            llama_server_binary=spec.llama_server_binary,
+        ).model_dump(mode="json"),
     }
     _write_json(run_dir / "manifest.json", manifest)
     return run_id, run_dir

@@ -1,0 +1,59 @@
+schema: spec-driven
+
+context: |
+  Language: en
+  All artifacts must be written in en.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  Project: local-llm-bench, a reproducible benchmarking toolkit for local
+  GGUF/llama.cpp and MLX language models on Apple Silicon.
+
+  Stack and layout:
+  - Python 3.11+ package managed with uv and pyproject.toml.
+  - Pydantic v2 configuration and immutable JSON/JSONL run artifacts.
+  - Typer CLI exposed as `llmb`.
+  - Tests use pytest with branch coverage; Ruff and mypy are mandatory.
+  - Source code lives under src/localllm_bench/ and tests mirror source modules.
+  - Experiment YAML files live under configs/experiments/.
+  - Measured reports live under results/; raw runs and models are gitignored.
+
+  Engineering constraints:
+  - Preserve deterministic seeds, SHA-256 fingerprints, artifact schema versions,
+    hardware provenance, and replayable schedules.
+  - Never weaken comparability checks across model, hardware, binary, protocol,
+    prompt corpus, or rate grid.
+  - Treat whole independent server runs as the statistical resampling unit; do
+    not treat requests as independent replicates.
+  - Keep persisted artifact formats backward compatible unless a schema version
+    explicitly changes.
+  - Keep library code typed and use the project logger instead of print().
+  - Do not commit GGUF files, raw benchmark runs, credentials, or data files over
+    2 MB.
+  - Prefer minimal changes and avoid new dependencies unless justified.
+
+rules:
+  proposal:
+    - Keep proposals under 700 words.
+    - Include explicit in-scope and out-of-scope behavior.
+    - State whether benchmark comparability or artifact compatibility changes.
+  specs:
+    - Write observable, testable behavior rather than implementation detail.
+    - Include failure, empty-input, and reproducibility scenarios when relevant.
+  design:
+    - Document provenance, compatibility, statistical assumptions, and failure semantics.
+    - Identify immutable artifacts and their integrity checks.
+  tasks:
+    - Include targeted tests, full quality checks, documentation, and artifact validation.
+    - Keep each task independently verifiable.
+
+operations:
+  apply:
+    guidance:
+      - Use test-driven changes where practical.
+      - Run targeted tests first, then `make full` before declaring completion.
+      - Do not execute expensive real-model benchmarks unless explicitly requested.
+  archive:
+    guidance:
+      - Run `openspec validate --all` before archiving.
+      - Confirm completed tasks and synchronized delta specs.
+      - Summarize compatibility and test evidence in the archive outcome.

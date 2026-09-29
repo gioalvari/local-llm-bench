@@ -8,6 +8,8 @@ import yaml
 from pydantic import BaseModel, Field, PositiveFloat, PositiveInt, model_validator
 
 NonNegativeInt = Annotated[int, Field(ge=0)]
+PositiveFiniteFloat = Annotated[float, Field(gt=0, allow_inf_nan=False)]
+MAX_ARRIVALS_PER_WINDOW = 1_000_000
 
 
 class FlashAttention(StrEnum):
@@ -23,6 +25,20 @@ class PromptArm(StrEnum):
 
     ZERO_SHOT = "zero-shot"
     ENGINEERED = "engineered"
+
+
+class ArrivalProcess(StrEnum):
+    """Supported open-loop arrival processes."""
+
+    FIXED = "fixed"
+    POISSON = "poisson"
+
+
+class RateOrderProtocol(StrEnum):
+    """Supported open-loop rate execution orders."""
+
+    CONFIGURED = "configured-order-v1"
+    CYCLIC = "cyclic-rotation-v1"
 
 
 class ModelSpec(BaseModel):
@@ -139,23 +155,56 @@ class LoadSpec(BaseModel):
 
 
 class OpenLoopSpec(BaseModel):
-    """Fixed-rate open-loop serving workload."""
+    """Open-loop serving workload with a reproducible arrival process."""
 
     prompt_dataset: Path
-    arrival_rates_rps: list[PositiveFloat] = Field(min_length=1)
-    duration_seconds: PositiveFloat = 3.0
+    arrival_rates_rps: list[PositiveFiniteFloat] = Field(min_length=1)
+    arrival_process: ArrivalProcess = ArrivalProcess.FIXED
+    arrival_seed: NonNegativeInt = 42
+    duration_seconds: PositiveFiniteFloat = 3.0
     warmup_requests: NonNegativeInt = 1
     server_slots: PositiveInt = 4
     max_client_workers: PositiveInt = 32
     latency_slo_ms: PositiveFloat = 500.0
     cooldown_seconds: Annotated[float, Field(ge=0)] = 0.5
+    independent_runs: PositiveInt = 1
+    bootstrap_iterations: PositiveInt = 10_000
+    bootstrap_seed: NonNegativeInt = 42
+    rate_order_protocol: RateOrderProtocol = RateOrderProtocol.CONFIGURED
+    rate_order_offset: NonNegativeInt = 0
 
     @model_validator(mode="after")
     def validate_rates(self) -> "OpenLoopSpec":
-        """Require unique arrival rates in increasing order."""
+        """Require a unique valid rate execution order."""
         rates = [float(value) for value in self.arrival_rates_rps]
-        if rates != sorted(set(rates)):
-            raise ValueError("arrival_rates_rps must be unique and increasing")
+        if len(rates) != len(set(rates)):
+            raise ValueError("arrival_rates_rps must be unique")
+        if self.rate_order_protocol is RateOrderProtocol.CONFIGURED and rates != sorted(
+            rates
+        ):
+            raise ValueError("configured arrival_rates_rps must be increasing")
+        if self.rate_order_offset >= len(rates):
+            raise ValueError("rate_order_offset must index arrival_rates_rps")
+        canonical_rates = sorted(rates)
+        if self.rate_order_protocol is RateOrderProtocol.CYCLIC:
+            expected = (
+                canonical_rates[self.rate_order_offset :]
+                + canonical_rates[: self.rate_order_offset]
+            )
+            if rates != expected:
+                raise ValueError(
+                    "cyclic arrival rates must match the declared rotation offset"
+                )
+        elif self.rate_order_offset != 0:
+            raise ValueError("configured rate order requires rate_order_offset 0")
+        if any(
+            rate * float(self.duration_seconds) > MAX_ARRIVALS_PER_WINDOW
+            for rate in rates
+        ):
+            raise ValueError(
+                f"open-loop windows support at most {MAX_ARRIVALS_PER_WINDOW} "
+                "expected arrivals"
+            )
         return self
 
 
@@ -219,7 +268,7 @@ class TrainingSpec(BaseModel):
 class ExperimentSpec(BaseModel):
     """Top-level benchmark experiment specification."""
 
-    schema_version: Literal["1"] = "1"
+    schema_version: Literal["1", "2"] = "1"
     experiment_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
     output_dir: Path = Path("runs")
     llama_bench_binary: str = "llama-bench"
@@ -234,6 +283,38 @@ class ExperimentSpec(BaseModel):
     open_loop: OpenLoopSpec | None = None
     context_sweep: ContextSweepSpec | None = None
     training: TrainingSpec | None = None
+
+    @model_validator(mode="after")
+    def validate_schema_features(self) -> "ExperimentSpec":
+        """Require schema v2 for expanded open-loop protocols."""
+        if (
+            self.open_loop is not None
+            and (
+                self.open_loop.arrival_process is ArrivalProcess.POISSON
+                or self.open_loop.independent_runs > 1
+                or self.open_loop.rate_order_protocol is RateOrderProtocol.CYCLIC
+            )
+            and self.schema_version != "2"
+        ):
+            raise ValueError("expanded open_loop protocols require schema_version 2")
+        if self.open_loop is not None and 1 < self.open_loop.independent_runs < 5:
+            raise ValueError("repeated open_loop studies require at least 5 runs")
+        if self.open_loop is not None and 1 < self.open_loop.independent_runs < len(
+            self.open_loop.arrival_rates_rps
+        ):
+            raise ValueError(
+                "repeated open_loop studies must cover every rate position"
+            )
+        if (
+            self.open_loop is not None
+            and self.open_loop.independent_runs > 1
+            and self.open_loop.independent_runs % len(self.open_loop.arrival_rates_rps)
+            != 0
+        ):
+            raise ValueError(
+                "repeated open_loop run count must be a multiple of the rate count"
+            )
+        return self
 
 
 def load_experiment(path: Path) -> ExperimentSpec:
